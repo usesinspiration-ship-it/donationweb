@@ -118,8 +118,8 @@ app.get('/metadata', async (req, res) => {
   }
 });
 
-// Handle React routing (send all other requests to index.html)
-app.get('/:path*', (req, res) => {
+// Handle React routing (fallback for SPA)
+app.use((req, res) => {
   res.sendFile(path.join(__dirname, 'dist', 'index.html'));
 });
 
