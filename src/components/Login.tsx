@@ -1,7 +1,7 @@
-import React, { useState } from 'react';
+import { useState } from 'react';
 import { auth, googleProvider } from '../firebase';
 import { signInWithPopup } from 'firebase/auth';
-import { LogIn, MapPin, ChevronDown, CheckCircle2 } from 'lucide-react';
+import { MapPin, ChevronDown, CheckCircle2 } from 'lucide-react';
 
 interface LoginProps {
     onLoginSuccess: (user: any, branch: string) => void;
