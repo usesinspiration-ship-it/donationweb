@@ -16,4 +16,19 @@ export default defineConfig({
       '/metadata': 'http://localhost:3001',
     },
   },
+  build: {
+    chunkSizeWarningLimit: 1000,
+    rollupOptions: {
+      output: {
+        manualChunks(id) {
+          if (id.includes('node_modules')) {
+            if (id.includes('firebase')) return 'vendor-firebase';
+            if (id.includes('@aws-sdk')) return 'vendor-aws';
+            if (id.includes('jspdf') || id.includes('html2canvas')) return 'vendor-pdf';
+            return 'vendor';
+          }
+        }
+      }
+    }
+  }
 })
