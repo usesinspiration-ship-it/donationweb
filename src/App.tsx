@@ -25,7 +25,7 @@ import { auth } from "./firebase";
 import { onAuthStateChanged, signOut } from "firebase/auth";
 import Login from "./components/Login";
 
-const PROXY_URL = "";
+const PROXY_URL = "https://donationweb-53ed.onrender.com";
 
 const BRANCH_PREFIXES: Record<string, string> = {
     "National": "UD/IN/26-27/",
