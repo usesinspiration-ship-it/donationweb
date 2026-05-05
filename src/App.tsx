@@ -655,13 +655,13 @@ export default function App() {
 
                                 {/* Receipt No and Date */}
                                 <div className="flex justify-between items-center font-bold text-[17px] mb-8" style={{ color: '#11057B' }}>
-                                    <p>Receipt No: <span className="ml-4 font-normal px-2 tracking-wider" style={{ color: '#1e3a8a', borderBottom: '1px dotted #1e3a8a' }}>{formData.receiptNo || `${BRANCH_PREFIXES[selectedBranch] || "USES/"}028`}</span></p>
-                                    <p>Date: <span className="ml-4 font-normal px-2" style={{ color: '#1e3a8a', borderBottom: '1px dotted #1e3a8a' }}>{formData.date || "2024-09-02"}</span></p>
+                                    <p>Receipt No: <span className="ml-4 font-normal px-2 tracking-wider underline decoration-dotted underline-offset-[6px]" style={{ color: '#1e3a8a' }}>{formData.receiptNo || `${BRANCH_PREFIXES[selectedBranch] || "USES/"}028`}</span></p>
+                                    <p>Date: <span className="ml-4 font-normal px-2 underline decoration-dotted underline-offset-[6px]" style={{ color: '#1e3a8a' }}>{formData.date || "2024-09-02"}</span></p>
                                 </div>
 
                                 {/* Body Text */}
                                 <div className="text-[19px] leading-[2.5] text-justify font-normal mb-12" style={{ color: '#11057B' }}>
-                                    Received with thanks from <span className="font-semibold px-2 uppercase pb-1" style={{ color: '#1e40af', borderBottom: '2px dotted #1e40af' }}>{formData.donorName ? `${formData.donorName}${formData.panNumber ? ', ' + formData.panNumber : ''}` : "ABHAY KUMAR MISHRA, ALJPM4419M"}</span> the sum of INR <span className="font-semibold px-2 capitalize pb-1" style={{ color: '#1e40af', borderBottom: '2px dotted #1e40af' }}>{formData.amountWords ? `${formData.amountWords}` : "Thirteen thousand Only"}</span> by <span className="font-semibold px-2 uppercase pb-1" style={{ color: '#1e40af', borderBottom: '2px dotted #1e40af' }}>{formData.paymentMode || "NEFT"}</span> for the <span className="font-semibold px-2 capitalize pb-1" style={{ color: '#1e40af', borderBottom: '2px dotted #1e40af' }}>{formData.purpose === "Specific Project" ? formData.specificPurpose || "General Contribution" : formData.purpose}</span>.
+                                    Received with thanks from <span className="font-semibold px-2 uppercase underline decoration-dotted decoration-2 underline-offset-[6px]" style={{ color: '#1e40af' }}>{formData.donorName ? `${formData.donorName}${formData.panNumber ? ', ' + formData.panNumber : ''}` : "ABHAY KUMAR MISHRA, ALJPM4419M"}</span> the sum of INR <span className="font-semibold px-2 capitalize underline decoration-dotted decoration-2 underline-offset-[6px]" style={{ color: '#1e40af' }}>{formData.amountWords ? `${formData.amountWords}` : "Thirteen thousand Only"}</span> by <span className="font-semibold px-2 uppercase underline decoration-dotted decoration-2 underline-offset-[6px]" style={{ color: '#1e40af' }}>{formData.paymentMode || "NEFT"}</span> for the <span className="font-semibold px-2 capitalize underline decoration-dotted decoration-2 underline-offset-[6px]" style={{ color: '#1e40af' }}>{formData.purpose === "Specific Project" ? formData.specificPurpose || "General Contribution" : formData.purpose}</span>.
                                 </div>
 
                                 {/* Amount Box and Signatures Row */}
@@ -680,9 +680,9 @@ export default function App() {
                                     <div className="text-center flex flex-col items-center pt-2" style={{ color: '#11057B' }}>
                                         <p className="text-[15px] mb-1">Received By,</p>
                                         <p className="font-bold text-[17px] mb-1">For, USES Foundation</p>
-                                        <img src={signatureUrl} alt="Signature" className="h-24 object-contain -my-2" style={{ mixBlendMode: 'multiply', filter: 'contrast(1.1) brightness(1.1)' }} />
-                                        <p className="font-bold text-[17px]">Archana Tiwari</p>
-                                        <p className="text-[15px]">Treasurer</p>
+                                        <img src={signatureUrl} alt="Signature" className="h-16 object-contain my-1" style={{ mixBlendMode: 'multiply', filter: 'contrast(1.1) brightness(1.1)' }} />
+                                        <p className="font-bold text-[17px] leading-tight">Archana Tiwari</p>
+                                        <p className="text-[15px] leading-tight">Treasurer</p>
                                     </div>
                                 </div>
 
