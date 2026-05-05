@@ -25,6 +25,20 @@ export default function Login({ onLoginSuccess }: LoginProps) {
         
         try {
             const result = await signInWithPopup(auth, googleProvider);
+
+            // Access control — check against allowlist from env
+            const allowedEmails = (import.meta.env.VITE_ALLOWED_EMAILS || "")
+                .split(",")
+                .map((e: string) => e.trim().toLowerCase())
+                .filter(Boolean);
+
+            if (allowedEmails.length > 0 && !allowedEmails.includes(result.user.email?.toLowerCase() || "")) {
+                await import('firebase/auth').then(({ signOut }) => signOut(auth));
+                setError("Access denied. This account is not authorized.");
+                setLoading(false);
+                return;
+            }
+
             onLoginSuccess(result.user, selectedBranch);
         } catch (err: any) {
             console.error(err);
@@ -108,7 +122,7 @@ export default function Login({ onLoginSuccess }: LoginProps) {
                         <div className="mt-10 pt-8 border-t border-gray-50 text-center">
                             <p className="text-gray-400 text-xs font-bold uppercase tracking-widest leading-loose">
                                 Authorized Personnel Only<br/>
-                                <span className="opacity-50">© 2024 USES Foundation</span>
+                                <span className="opacity-50">© {new Date().getFullYear()} USES Foundation</span>
                             </p>
                         </div>
                     </div>

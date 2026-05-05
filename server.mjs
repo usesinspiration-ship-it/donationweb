@@ -1,7 +1,7 @@
 import express from 'express';
 import cors from 'cors';
 import morgan from 'morgan';
-import { S3Client, PutObjectCommand, ListObjectsV2Command, DeleteObjectCommand, HeadObjectCommand } from '@aws-sdk/client-s3';
+import { S3Client, PutObjectCommand, ListObjectsV2Command, DeleteObjectCommand, HeadObjectCommand, GetObjectCommand } from '@aws-sdk/client-s3';
 import dotenv from 'dotenv';
 
 import path from 'path';
@@ -57,16 +57,29 @@ app.put('/upload', async (req, res) => {
 // 2. LIST (Optimized to fetch metadata in parallel)
 app.get('/list', async (req, res) => {
   try {
-    const listCommand = new ListObjectsV2Command({ Bucket: BUCKET });
-    const listResponse = await s3Client.send(listCommand);
-    
-    if (!listResponse.Contents) {
+    const allObjects = [];
+    let continuationToken;
+
+    do {
+      const listCommand = new ListObjectsV2Command({ 
+        Bucket: BUCKET,
+        ContinuationToken: continuationToken
+      });
+      const listResponse = await s3Client.send(listCommand);
+      
+      if (listResponse.Contents) {
+        allObjects.push(...listResponse.Contents);
+      }
+      continuationToken = listResponse.NextContinuationToken;
+    } while (continuationToken);
+
+    if (allObjects.length === 0) {
       return res.json({ success: true, files: [] });
     }
 
     // Fetch metadata for all files in parallel
     const filesWithMetadata = await Promise.all(
-      listResponse.Contents.map(async (item) => {
+      allObjects.map(async (item) => {
         try {
           const headCommand = new HeadObjectCommand({ Bucket: BUCKET, Key: item.Key });
           const headResponse = await s3Client.send(headCommand);
@@ -113,6 +126,20 @@ app.get('/metadata', async (req, res) => {
     const { file } = req.query;
     const response = await s3Client.send(new HeadObjectCommand({ Bucket: BUCKET, Key: file }));
     res.json({ success: true, metadata: response.Metadata });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// 5. DOWNLOAD / VIEW
+app.get('/download', async (req, res) => {
+  try {
+    const { file } = req.query;
+    const command = new GetObjectCommand({ Bucket: BUCKET, Key: file });
+    const response = await s3Client.send(command);
+    
+    res.setHeader('Content-Type', response.ContentType || 'application/pdf');
+    response.Body.pipe(res);
   } catch (error) {
     res.status(500).json({ error: error.message });
   }

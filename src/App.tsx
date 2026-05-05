@@ -117,6 +117,7 @@ export default function App() {
     const [records, setRecords] = useState<ReceiptRecord[]>([]);
     const [isEditing, setIsEditing] = useState(false);
     const [isLoadingMetadata, setIsLoadingMetadata] = useState<string | null>(null);
+    const [isDeletingId, setIsDeletingId] = useState<string | null>(null);
     const [searchQuery, setSearchQuery] = useState("");
 
     // MONITOR AUTH
@@ -211,9 +212,10 @@ export default function App() {
 
     useEffect(() => {
         if (formData.amount) {
-            const num = parseInt(formData.amount, 10);
+            const num = parseFloat(formData.amount);
             if (!isNaN(num)) {
-                setFormData(prev => ({ ...prev, amountWords: convertNumberToWords(num) }));
+                // convertNumberToWords handles whole rupees; paise shown in amount box
+                setFormData(prev => ({ ...prev, amountWords: convertNumberToWords(Math.floor(num)) }));
             }
         } else {
             setFormData(prev => ({ ...prev, amountWords: "" }));
@@ -227,7 +229,14 @@ export default function App() {
 
     const handlePrint = () => {
         window.print();
-        if (!isEditing) incrementReceiptNo();
+        // Only increment after user confirms they actually printed
+        if (!isEditing) {
+            setTimeout(() => {
+                if (window.confirm("Did the receipt print successfully? Click OK to advance to the next receipt number.")) {
+                    incrementReceiptNo();
+                }
+            }, 500);
+        }
         confetti({
             particleCount: 100,
             spread: 70,
@@ -324,8 +333,7 @@ export default function App() {
     };
 
     const handleViewFile = (fileName: string) => {
-        console.log("View file:", fileName);
-        alert("File key: " + fileName + "\nIn a web deployment, this would open the cloud link.");
+        window.open(`${PROXY_URL}/download?file=${fileName}`, '_blank');
     };
 
     const handleEditReceipt = async (fileName: string) => {
@@ -360,15 +368,19 @@ export default function App() {
     const handleDeleteReceipt = async (fileName: string, receiptNo: string) => {
         if (!window.confirm(`Are you sure you want to delete receipt ${receiptNo}?`)) return;
 
+        setIsDeletingId(fileName);
         try {
             const res = await fetch(`${PROXY_URL}/delete?file=${fileName}`, { method: 'DELETE' });
             const data = await res.json();
             if (data.success) {
-                alert("Receipt deleted successfully.");
                 fetchR2History();
+            } else {
+                alert("Error deleting receipt.");
             }
         } catch (err) {
             alert("Error deleting receipt.");
+        } finally {
+            setIsDeletingId(null);
         }
     };
 
@@ -409,7 +421,14 @@ export default function App() {
                 
                 <nav className="flex bg-gray-100 p-1 rounded-xl">
                     <button 
-                        onClick={() => setView("form")}
+                        onClick={() => {
+                            setView("form");
+                            // Fix #10: reset editing state when navigating to Create tab manually
+                            if (isEditing) {
+                                setIsEditing(false);
+                                setFormData(prev => ({ ...prev, receiptNo: getInitialReceiptNo(selectedBranch) }));
+                            }
+                        }}
                         className={`px-6 py-2 rounded-lg font-bold transition-all flex items-center gap-2 ${view === "form" ? "bg-white text-blue-900 shadow-sm" : "text-gray-500 hover:text-gray-700"}`}
                     >
                         <PlusCircle size={16} />
@@ -480,14 +499,20 @@ export default function App() {
                                     <div className="flex-1">
                                         <div className="flex justify-between items-center mb-2">
                                             <label className="block text-sm font-bold text-gray-700">Receipt Number <span className="text-red-500">*</span></label>
-                                            <button onClick={handleEditCounter} title="Reset Counter" type="button" className="text-blue-600 hover:text-blue-800 transition">
-                                                <Edit size={14} />
-                                            </button>
+                                            {!isEditing && (
+                                                <button onClick={handleEditCounter} title="Reset Counter" type="button" className="text-blue-600 hover:text-blue-800 transition">
+                                                    <Edit size={14} />
+                                                </button>
+                                            )}
+                                            {isEditing && (
+                                                <span className="text-[10px] font-bold text-amber-600 bg-amber-50 border border-amber-200 px-2 py-0.5 rounded-full uppercase tracking-wide">Locked</span>
+                                            )}
                                         </div>
                                         <input 
                                             type="text" name="receiptNo" value={formData.receiptNo} onChange={handleChange}
                                             placeholder={`e.g., ${BRANCH_PREFIXES[selectedBranch] || "USES/"}028`}
-                                            className="w-full border border-gray-300 bg-gray-50 rounded-lg px-4 py-3 outline-none focus:ring-2 focus:ring-blue-600 transition uppercase font-semibold"
+                                            disabled={isEditing}
+                                            className={`w-full border rounded-lg px-4 py-3 outline-none transition uppercase font-semibold ${isEditing ? 'border-gray-200 bg-gray-100 text-gray-400 cursor-not-allowed' : 'border-gray-300 bg-gray-50 focus:ring-2 focus:ring-blue-600'}`}
                                         />
                                     </div>
                                     <div className="flex-1">
@@ -809,10 +834,11 @@ export default function App() {
                                                         </button>
                                                         <button 
                                                             onClick={() => handleDeleteReceipt(record.id, record.receiptNo)}
-                                                            className="p-2 text-red-600 hover:text-red-800 hover:bg-red-50 rounded-lg transition-all"
+                                                            disabled={isDeletingId !== null}
+                                                            className="p-2 text-red-600 hover:text-red-800 hover:bg-red-50 rounded-lg transition-all disabled:opacity-40 disabled:cursor-not-allowed"
                                                             title="Delete"
                                                         >
-                                                            <Trash2 size={18} />
+                                                            {isDeletingId === record.id ? <Loader2 className="animate-spin" size={18} /> : <Trash2 size={18} />}
                                                         </button>
                                                     </td>
                                                 </tr>
