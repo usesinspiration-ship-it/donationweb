@@ -131,6 +131,75 @@ app.get('/metadata', async (req, res) => {
   }
 });
 
+// 4.1 VERIFY BY PAN (Donor verification)
+app.get('/verify-pan', async (req, res) => {
+  try {
+    const { pan } = req.query;
+    if (!pan) return res.status(400).json({ error: "PAN number is required" });
+
+    const allObjects = [];
+    let continuationToken;
+
+    do {
+      const listCommand = new ListObjectsV2Command({ 
+        Bucket: BUCKET,
+        ContinuationToken: continuationToken
+      });
+      const listResponse = await s3Client.send(listCommand);
+      
+      if (listResponse.Contents) {
+        allObjects.push(...listResponse.Contents);
+      }
+      continuationToken = listResponse.NextContinuationToken;
+    } while (continuationToken);
+
+    if (allObjects.length === 0) {
+      return res.json({ success: true, donations: [] });
+    }
+
+    // Fetch metadata for all files and filter by PAN
+    // We do this in chunks to avoid overwhelming the server or R2
+    const CHUNK_SIZE = 20;
+    const donations = [];
+
+    for (let i = 0; i < allObjects.length; i += CHUNK_SIZE) {
+      const chunk = allObjects.slice(i, i + CHUNK_SIZE);
+      const results = await Promise.all(
+        chunk.map(async (item) => {
+          try {
+            const headCommand = new HeadObjectCommand({ Bucket: BUCKET, Key: item.Key });
+            const headResponse = await s3Client.send(headCommand);
+            const metadata = headResponse.Metadata;
+            
+            // Normalize PAN for comparison
+            if (metadata.pannumber && metadata.pannumber.toLowerCase() === pan.toLowerCase()) {
+              return {
+                key: item.Key,
+                receiptNo: metadata.receiptno,
+                donorName: metadata.donorname,
+                amount: metadata.amount,
+                date: metadata.date,
+                branch: metadata.branch
+              };
+            }
+          } catch (e) {
+            return null;
+          }
+          return null;
+        })
+      );
+      donations.push(...results.filter(r => r !== null));
+    }
+
+    res.json({
+      success: true,
+      donations: donations,
+    });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
 // 5. DOWNLOAD / VIEW
 app.get('/download', async (req, res) => {
   try {
