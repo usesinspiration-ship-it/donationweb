@@ -1,7 +1,8 @@
 import express from 'express';
 import cors from 'cors';
 import morgan from 'morgan';
-import { S3Client, PutObjectCommand, ListObjectsV2Command, DeleteObjectCommand, HeadObjectCommand, GetObjectCommand } from '@aws-sdk/client-s3';
+import { S3Client, PutObjectCommand, DeleteObjectCommand, GetObjectCommand } from '@aws-sdk/client-s3';
+import { createClient } from '@supabase/supabase-js';
 import dotenv from 'dotenv';
 
 import path from 'path';
@@ -19,6 +20,7 @@ app.use(express.json({ limit: '50mb' }));
 // Serve static files from the 'dist' directory
 app.use(express.static(path.join(__dirname, 'dist')));
 
+// Cloudflare R2 Client
 const s3Client = new S3Client({
   region: 'auto',
   endpoint: `https://${process.env.R2_ACCOUNT_ID}.r2.cloudflarestorage.com`,
@@ -29,173 +31,149 @@ const s3Client = new S3Client({
   forcePathStyle: true,
 });
 
+// Supabase Client (Metadata Database)
+const supabase = createClient(
+  process.env.SUPABASE_URL,
+  process.env.SUPABASE_SERVICE_ROLE_KEY
+);
+
 const BUCKET = process.env.R2_BUCKET_NAME || 'reciept';
 
-// 1. UPLOAD
+// 1. UPLOAD (File to R2 + Metadata to Supabase)
 app.put('/upload', async (req, res) => {
   try {
-    const { fileName, metadata } = req.query;
+    const { fileName } = req.query;
+    const metadata = JSON.parse(req.headers['x-metadata'] || '{}');
+    
     const chunks = [];
     req.on('data', chunk => chunks.push(chunk));
     req.on('end', async () => {
       const buffer = Buffer.concat(chunks);
-      const command = new PutObjectCommand({
+      
+      // 1a. Upload File to Cloudflare R2
+      const s3Command = new PutObjectCommand({
         Bucket: BUCKET,
         Key: fileName,
         Body: buffer,
         ContentType: 'application/pdf',
-        Metadata: JSON.parse(req.headers['x-metadata'] || '{}'),
+        Metadata: metadata, // Keep as backup
       });
-      await s3Client.send(command);
+      await s3Client.send(s3Command);
+
+      // 1b. Save Metadata to Supabase
+      const { error: sbError } = await supabase
+        .from('donations')
+        .upsert({
+          id: fileName, // Use fileName as ID to link both
+          receipt_no: metadata.receiptno,
+          donor_name: metadata.donorname,
+          amount: parseFloat(metadata.amount),
+          pan_number: metadata.pannumber,
+          city: metadata.city,
+          phone_number: metadata.phonenumber,
+          date: metadata.date,
+          timestamp: metadata.timestamp,
+          branch: metadata.branch
+        });
+
+      if (sbError) throw sbError;
+      
       res.json({ success: true });
     });
   } catch (error) {
+    console.error("Upload Error:", error);
     res.status(500).json({ error: error.message });
   }
 });
 
-// 2. LIST (Optimized to fetch metadata in parallel)
+// 2. LIST (Fetching from Supabase - High Performance)
 app.get('/list', async (req, res) => {
   try {
-    const allObjects = [];
-    let continuationToken;
+    const { data, error } = await supabase
+      .from('donations')
+      .select('*')
+      .order('created_at', { ascending: false });
 
-    do {
-      const listCommand = new ListObjectsV2Command({ 
-        Bucket: BUCKET,
-        ContinuationToken: continuationToken
-      });
-      const listResponse = await s3Client.send(listCommand);
-      
-      if (listResponse.Contents) {
-        allObjects.push(...listResponse.Contents);
+    if (error) throw error;
+
+    // Map Supabase fields back to the format the frontend expects
+    const filesWithMetadata = data.map(item => ({
+      key: item.id,
+      metadata: {
+        receiptno: item.receipt_no,
+        donorname: item.donor_name,
+        amount: item.amount.toString(),
+        pannumber: item.pan_number,
+        city: item.city,
+        phonenumber: item.phone_number,
+        date: item.date,
+        timestamp: item.timestamp,
+        branch: item.branch
       }
-      continuationToken = listResponse.NextContinuationToken;
-    } while (continuationToken);
-
-    if (allObjects.length === 0) {
-      return res.json({ success: true, files: [] });
-    }
-
-    // Fetch metadata for all files in parallel
-    const filesWithMetadata = await Promise.all(
-      allObjects.map(async (item) => {
-        try {
-          const headCommand = new HeadObjectCommand({ Bucket: BUCKET, Key: item.Key });
-          const headResponse = await s3Client.send(headCommand);
-          return {
-            key: item.Key,
-            size: item.Size,
-            lastModified: item.LastModified,
-            metadata: headResponse.Metadata
-          };
-        } catch (e) {
-          return {
-            key: item.Key,
-            size: item.Size,
-            lastModified: item.LastModified,
-            metadata: {}
-          };
-        }
-      })
-    );
+    }));
 
     res.json({
       success: true,
       files: filesWithMetadata,
     });
   } catch (error) {
+    console.error("List Error:", error);
     res.status(500).json({ error: error.message });
   }
 });
 
-// 3. DELETE
+// 3. DELETE (From R2 and Supabase)
 app.delete('/delete', async (req, res) => {
   try {
     const { file } = req.query;
+    
+    // Delete from R2
     await s3Client.send(new DeleteObjectCommand({ Bucket: BUCKET, Key: file }));
+    
+    // Delete from Supabase
+    const { error } = await supabase
+      .from('donations')
+      .delete()
+      .eq('id', file);
+
+    if (error) throw error;
+
     res.json({ success: true });
   } catch (error) {
+    console.error("Delete Error:", error);
     res.status(500).json({ error: error.message });
   }
 });
 
-// 4. METADATA
-app.get('/metadata', async (req, res) => {
-  try {
-    const { file } = req.query;
-    const response = await s3Client.send(new HeadObjectCommand({ Bucket: BUCKET, Key: file }));
-    res.json({ success: true, metadata: response.Metadata });
-  } catch (error) {
-    res.status(500).json({ error: error.message });
-  }
-});
-
-// 4.1 VERIFY BY PAN (Donor verification)
+// 4. VERIFY BY PAN (Direct Database Query)
 app.get('/verify-pan', async (req, res) => {
   try {
     const { pan } = req.query;
     if (!pan) return res.status(400).json({ error: "PAN number is required" });
 
-    const allObjects = [];
-    let continuationToken;
+    const { data, error } = await supabase
+      .from('donations')
+      .select('*')
+      .ilike('pan_number', pan) // Case-insensitive match
+      .order('created_at', { ascending: false });
 
-    do {
-      const listCommand = new ListObjectsV2Command({ 
-        Bucket: BUCKET,
-        ContinuationToken: continuationToken
-      });
-      const listResponse = await s3Client.send(listCommand);
-      
-      if (listResponse.Contents) {
-        allObjects.push(...listResponse.Contents);
-      }
-      continuationToken = listResponse.NextContinuationToken;
-    } while (continuationToken);
+    if (error) throw error;
 
-    if (allObjects.length === 0) {
-      return res.json({ success: true, donations: [] });
-    }
-
-    // Fetch metadata for all files and filter by PAN
-    // We do this in chunks to avoid overwhelming the server or R2
-    const CHUNK_SIZE = 20;
-    const donations = [];
-
-    for (let i = 0; i < allObjects.length; i += CHUNK_SIZE) {
-      const chunk = allObjects.slice(i, i + CHUNK_SIZE);
-      const results = await Promise.all(
-        chunk.map(async (item) => {
-          try {
-            const headCommand = new HeadObjectCommand({ Bucket: BUCKET, Key: item.Key });
-            const headResponse = await s3Client.send(headCommand);
-            const metadata = headResponse.Metadata;
-            
-            // Normalize PAN for comparison
-            if (metadata.pannumber && metadata.pannumber.toLowerCase() === pan.toLowerCase()) {
-              return {
-                key: item.Key,
-                receiptNo: metadata.receiptno,
-                donorName: metadata.donorname,
-                amount: metadata.amount,
-                date: metadata.date,
-                branch: metadata.branch
-              };
-            }
-          } catch (e) {
-            return null;
-          }
-          return null;
-        })
-      );
-      donations.push(...results.filter(r => r !== null));
-    }
+    const donations = data.map(item => ({
+      key: item.id,
+      receiptNo: item.receipt_no,
+      donorName: item.donor_name,
+      amount: item.amount,
+      date: item.date,
+      branch: item.branch
+    }));
 
     res.json({
       success: true,
       donations: donations,
     });
   } catch (error) {
+    console.error("Verify Error:", error);
     res.status(500).json({ error: error.message });
   }
 });

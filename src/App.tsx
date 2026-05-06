@@ -78,6 +78,9 @@ interface ReceiptRecord {
     date: string;
     timestamp: string;
     donorName?: string;
+    panNumber?: string;
+    city?: string;
+    phoneNumber?: string;
     branch?: string;
 }
 
@@ -103,6 +106,8 @@ export default function App() {
         date: today,
         donorName: "ABHAY KUMAR MISHRA",
         panNumber: "ALJPM4419M",
+        city: "Mumbai",
+        phoneNumber: "9876543210",
         amount: "13000",
         amountWords: "",
         paymentMode: "NEFT",
@@ -190,6 +195,9 @@ export default function App() {
                     receiptNo: f.metadata?.receiptno || f.key.replace("Receipt_", "").replace(".pdf", "").replace(/_/g, "/"),
                     amount: f.metadata?.amount ? Number(f.metadata.amount).toLocaleString('en-IN') : "---",
                     donorName: f.metadata?.donorname || "---",
+                    panNumber: f.metadata?.pannumber || "---",
+                    city: f.metadata?.city || "---",
+                    phoneNumber: f.metadata?.phonenumber || "---",
                     date: f.metadata?.date || new Date(f.lastModified).toLocaleDateString(),
                     timestamp: new Date(f.lastModified).toLocaleString(),
                     branch: f.metadata?.branch || "Unassigned"
@@ -300,6 +308,8 @@ export default function App() {
                         receiptno: formData.receiptNo,
                         donorname: formData.donorName,
                         pannumber: formData.panNumber,
+                        city: formData.city,
+                        phonenumber: formData.phoneNumber,
                         amount: formData.amount,
                         paymentmode: formData.paymentMode,
                         purpose: formData.purpose,
@@ -348,6 +358,8 @@ export default function App() {
                     date: meta.date || today,
                     donorName: meta.donorname || "",
                     panNumber: meta.pannumber || "",
+                    city: meta.city || "",
+                    phoneNumber: meta.phonenumber || "",
                     amount: meta.amount || "",
                     amountWords: "",
                     paymentMode: meta.paymentmode || "NEFT",
@@ -386,7 +398,10 @@ export default function App() {
 
     const filteredRecords = records.filter(r => 
         r.receiptNo.toLowerCase().includes(searchQuery.toLowerCase()) || 
-        r.donorName?.toLowerCase().includes(searchQuery.toLowerCase())
+        r.donorName?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        r.panNumber?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        r.city?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        r.phoneNumber?.toLowerCase().includes(searchQuery.toLowerCase())
     );
 
     const isValid = formData.receiptNo && formData.donorName && formData.amount;
@@ -534,6 +549,25 @@ export default function App() {
 
                                 <div className="flex gap-4">
                                     <div className="flex-1">
+                                        <label className="block text-sm font-bold text-gray-700 mb-2">City</label>
+                                        <input 
+                                            type="text" name="city" value={formData.city} onChange={handleChange}
+                                            placeholder="e.g. Mumbai"
+                                            className="w-full border border-gray-300 bg-gray-50 rounded-lg px-4 py-3 outline-none focus:ring-2 focus:ring-blue-600 transition font-medium"
+                                        />
+                                    </div>
+                                    <div className="flex-1">
+                                        <label className="block text-sm font-bold text-gray-700 mb-2">Phone Number</label>
+                                        <input 
+                                            type="text" name="phoneNumber" value={formData.phoneNumber} onChange={handleChange}
+                                            placeholder="e.g. 9876543210"
+                                            className="w-full border border-gray-300 bg-gray-50 rounded-lg px-4 py-3 outline-none focus:ring-2 focus:ring-blue-600 transition font-medium"
+                                        />
+                                    </div>
+                                </div>
+
+                                <div className="flex gap-4">
+                                    <div className="flex-1">
                                         <label className="block text-sm font-bold text-gray-700 mb-2">Amount (₹) <span className="text-red-500">*</span></label>
                                         <input 
                                             type="number" name="amount" value={formData.amount} onChange={handleChange}
@@ -661,7 +695,7 @@ export default function App() {
 
                                 {/* Body Text */}
                                 <div className="text-[19px] leading-[2.5] text-justify font-normal mb-12" style={{ color: '#11057B' }}>
-                                    Received with thanks from <span className="font-semibold px-2 uppercase underline decoration-dotted decoration-2 underline-offset-[6px]" style={{ color: '#1e40af' }}>{formData.donorName ? `${formData.donorName}${formData.panNumber ? ', ' + formData.panNumber : ''}` : "ABHAY KUMAR MISHRA, ALJPM4419M"}</span> the sum of INR <span className="font-semibold px-2 capitalize underline decoration-dotted decoration-2 underline-offset-[6px]" style={{ color: '#1e40af' }}>{formData.amountWords ? `${formData.amountWords}` : "Thirteen thousand Only"}</span> by <span className="font-semibold px-2 uppercase underline decoration-dotted decoration-2 underline-offset-[6px]" style={{ color: '#1e40af' }}>{formData.paymentMode || "NEFT"}</span> for the <span className="font-semibold px-2 capitalize underline decoration-dotted decoration-2 underline-offset-[6px]" style={{ color: '#1e40af' }}>{formData.purpose === "Specific Project" ? formData.specificPurpose || "General Contribution" : formData.purpose}</span>.
+                                    Received with thanks from <span className="font-semibold px-2 uppercase underline decoration-dotted decoration-2 underline-offset-[6px]" style={{ color: '#1e40af' }}>{formData.donorName ? `${formData.donorName}${formData.panNumber ? ', PAN: ' + formData.panNumber : ''}` : "ABHAY KUMAR MISHRA, PAN: ALJPM4419M"}</span> the sum of INR <span className="font-semibold px-2 capitalize underline decoration-dotted decoration-2 underline-offset-[6px]" style={{ color: '#1e40af' }}>{formData.amountWords ? `${formData.amountWords}` : "Thirteen thousand Only"}</span> by <span className="font-semibold px-2 uppercase underline decoration-dotted decoration-2 underline-offset-[6px]" style={{ color: '#1e40af' }}>{formData.paymentMode || "NEFT"}</span> for the <span className="font-semibold px-2 capitalize underline decoration-dotted decoration-2 underline-offset-[6px]" style={{ color: '#1e40af' }}>{formData.purpose === "Specific Project" ? formData.specificPurpose || "General Contribution" : formData.purpose}</span>.
                                 </div>
 
                                 {/* Amount Box and Signatures Row */}
@@ -748,7 +782,7 @@ export default function App() {
                         )}
                     </div>
                 ) : (
-                    <div className="p-8 max-w-6xl mx-auto w-full">
+                    <div className="p-8 max-w-[1800px] mx-auto w-full">
                         <div className="bg-white rounded-2xl shadow-md border border-gray-100 overflow-hidden">
                             <div className="p-8 border-b border-gray-100 flex justify-between items-center bg-white">
                                 <div>
@@ -776,17 +810,20 @@ export default function App() {
                                 <table className="w-full text-left">
                                     <thead className="bg-gray-50 border-b border-gray-100">
                                         <tr>
-                                            <th className="px-8 py-4 font-bold text-gray-700 text-sm uppercase tracking-wider">Receipt No</th>
-                                            <th className="px-8 py-4 font-bold text-gray-700 text-sm uppercase tracking-wider">Donor</th>
-                                            <th className="px-8 py-4 font-bold text-gray-700 text-sm uppercase tracking-wider">Amount</th>
-                                            <th className="px-8 py-4 font-bold text-gray-700 text-sm uppercase tracking-wider">Date & Time</th>
-                                            <th className="px-8 py-4 font-bold text-gray-700 text-sm uppercase tracking-wider">Actions</th>
+                                            <th className="px-6 py-4 font-bold text-gray-700 text-[11px] uppercase tracking-wider">Receipt No</th>
+                                            <th className="px-6 py-4 font-bold text-gray-700 text-[11px] uppercase tracking-wider">Donor Name</th>
+                                            <th className="px-6 py-4 font-bold text-gray-700 text-[11px] uppercase tracking-wider">City</th>
+                                            <th className="px-6 py-4 font-bold text-gray-700 text-[11px] uppercase tracking-wider">Phone Number</th>
+                                            <th className="px-6 py-4 font-bold text-gray-700 text-[11px] uppercase tracking-wider">PAN Number</th>
+                                            <th className="px-6 py-4 font-bold text-gray-700 text-[11px] uppercase tracking-wider">Amount</th>
+                                            <th className="px-6 py-4 font-bold text-gray-700 text-[11px] uppercase tracking-wider">Date & Time</th>
+                                            <th className="px-6 py-4 font-bold text-gray-700 text-[11px] uppercase tracking-wider text-right">Actions</th>
                                         </tr>
                                     </thead>
                                     <tbody className="divide-y divide-gray-100">
                                         {isFetching ? (
                                             <tr>
-                                                <td colSpan={5} className="px-8 py-20 text-center text-blue-600 font-bold">
+                                                <td colSpan={8} className="px-8 py-20 text-center text-blue-600 font-bold">
                                                     <div className="flex flex-col items-center">
                                                         <Loader2 className="animate-spin mb-4" size={32} />
                                                         Syncing with Cloud...
@@ -795,7 +832,7 @@ export default function App() {
                                             </tr>
                                         ) : filteredRecords.length === 0 ? (
                                             <tr>
-                                                <td colSpan={5} className="px-8 py-20 text-center">
+                                                <td colSpan={8} className="px-8 py-20 text-center">
                                                     <div className="flex flex-col items-center">
                                                         <div className="bg-gray-50 p-6 rounded-full mb-4">
                                                             <Search className="w-12 h-12 text-gray-300" />
@@ -806,40 +843,55 @@ export default function App() {
                                             </tr>
                                         ) : (
                                             filteredRecords.map((record) => (
-                                                <tr key={record.id} className="hover:bg-gray-50 transition-colors">
-                                                    <td className="px-8 py-4 font-bold text-blue-900">{record.receiptNo}</td>
-                                                    <td className="px-8 py-4 font-semibold text-gray-700 uppercase">{record.donorName}</td>
-                                                    <td className="px-8 py-4">
-                                                        <span className="font-bold text-green-700">₹ {record.amount}</span>
+                                                <tr key={record.id} className="hover:bg-gray-50 transition-colors group">
+                                                    <td className="px-6 py-4">
+                                                        <span className="font-bold text-blue-900 uppercase tracking-wide text-xs">{record.receiptNo}</span>
                                                     </td>
-                                                    <td className="px-8 py-4">
-                                                        <div className="text-gray-900 font-semibold">{record.date}</div>
-                                                        <div className="text-xs text-gray-400 font-medium">{record.timestamp}</div>
+                                                    <td className="px-6 py-4">
+                                                        <span className="font-bold text-gray-900 uppercase text-xs">{record.donorName}</span>
                                                     </td>
-                                                    <td className="px-8 py-4 flex gap-2">
-                                                        <button 
-                                                            onClick={() => handleViewFile(record.id)}
-                                                            className="p-2 text-blue-600 hover:text-blue-800 hover:bg-blue-50 rounded-lg transition-all"
-                                                            title="View"
-                                                        >
-                                                            <Eye size={18} />
-                                                        </button>
-                                                        <button 
-                                                            onClick={() => handleEditReceipt(record.id)}
-                                                            disabled={isLoadingMetadata !== null}
-                                                            className="p-2 text-indigo-600 hover:text-indigo-800 hover:bg-indigo-50 rounded-lg transition-all disabled:opacity-50"
-                                                            title="Edit"
-                                                        >
-                                                            {isLoadingMetadata === record.id ? <Loader2 className="animate-spin" size={18} /> : <Edit size={18} />}
-                                                        </button>
-                                                        <button 
-                                                            onClick={() => handleDeleteReceipt(record.id, record.receiptNo)}
-                                                            disabled={isDeletingId !== null}
-                                                            className="p-2 text-red-600 hover:text-red-800 hover:bg-red-50 rounded-lg transition-all disabled:opacity-40 disabled:cursor-not-allowed"
-                                                            title="Delete"
-                                                        >
-                                                            {isDeletingId === record.id ? <Loader2 className="animate-spin" size={18} /> : <Trash2 size={18} />}
-                                                        </button>
+                                                    <td className="px-6 py-4">
+                                                        <span className="text-xs font-bold text-gray-600 uppercase">{record.city}</span>
+                                                    </td>
+                                                    <td className="px-6 py-4">
+                                                        <span className="text-xs font-bold text-gray-600">{record.phoneNumber}</span>
+                                                    </td>
+                                                    <td className="px-6 py-4">
+                                                        <span className="text-[10px] font-black bg-blue-50 text-blue-700 px-2 py-1 rounded uppercase tracking-wider border border-blue-100">{record.panNumber}</span>
+                                                    </td>
+                                                    <td className="px-6 py-4 font-black text-gray-900 text-sm italic">₹ {record.amount}</td>
+                                                    <td className="px-6 py-4">
+                                                        <div className="flex flex-col">
+                                                            <span className="text-[11px] font-bold text-gray-700">{record.date}</span>
+                                                            <span className="text-[9px] text-gray-400 font-medium uppercase">{record.timestamp}</span>
+                                                        </div>
+                                                    </td>
+                                                    <td className="px-6 py-4 text-right">
+                                                        <div className="flex items-center justify-end gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                                                            <button 
+                                                                onClick={() => handleViewFile(record.id)}
+                                                                className="p-2 text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
+                                                                title="View Receipt"
+                                                            >
+                                                                <Eye size={16} />
+                                                            </button>
+                                                            <button 
+                                                                onClick={() => handleEditReceipt(record.id)}
+                                                                className="p-2 text-amber-600 hover:bg-amber-50 rounded-lg transition-colors"
+                                                                title="Edit Metadata"
+                                                                disabled={isLoadingMetadata === record.id}
+                                                            >
+                                                                {isLoadingMetadata === record.id ? <Loader2 size={16} className="animate-spin" /> : <Edit size={16} />}
+                                                            </button>
+                                                            <button 
+                                                                onClick={() => handleDeleteReceipt(record.id, record.receiptNo)}
+                                                                className="p-2 text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+                                                                title="Delete Receipt"
+                                                                disabled={isDeletingId === record.id}
+                                                            >
+                                                                {isDeletingId === record.id ? <Loader2 size={16} className="animate-spin" /> : <Trash2 size={16} />}
+                                                            </button>
+                                                        </div>
                                                     </td>
                                                 </tr>
                                             ))
