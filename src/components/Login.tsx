@@ -3,6 +3,8 @@ import { auth } from '../firebase';
 import { signInWithEmailAndPassword } from 'firebase/auth';
 import { MapPin, ChevronDown, CheckCircle2, Search, ShieldCheck, FileText, ExternalLink, Loader2, User, Lock } from 'lucide-react';
 
+import logoUrl from '../assets/logo/logo.png';
+
 interface LoginProps {
     onLoginSuccess: (user: any, branch: string) => void;
 }
@@ -34,15 +36,15 @@ export default function Login({ onLoginSuccess }: LoginProps) {
             setError("Please enter both User ID and Password");
             return;
         }
-        
+
         setLoading(true);
         setError("");
-        
+
         try {
             const normalizedId = userId.toLowerCase().trim();
             const email = normalizedId.includes('@') ? normalizedId : `${normalizedId}@uses.com`;
             const result = await signInWithEmailAndPassword(auth, email, password);
-            
+
             // Determine Authorized Branches
             const userPrefix = normalizedId.split('@')[0];
             let authorized: string[] = [];
@@ -125,8 +127,8 @@ export default function Login({ onLoginSuccess }: LoginProps) {
             <div className="max-w-md w-full">
                 {/* Brand Logo & Name */}
                 <div className="text-center mb-10">
-                    <div className="bg-blue-900 w-20 h-20 rounded-3xl flex items-center justify-center mx-auto mb-6 shadow-xl shadow-blue-900/20">
-                        <span className="text-white font-black text-3xl italic">U</span>
+                    <div className="w-32 h-32 flex items-center justify-center mx-auto mb-6">
+                        <img src={logoUrl} alt="USES Foundation Logo" className="max-w-full max-h-full object-contain" />
                     </div>
                     <h1 className="text-4xl font-black text-blue-900 tracking-tight mb-2">USES Foundation</h1>
                     <p className="text-gray-500 font-medium tracking-wide text-sm">Universal Sadhana for Eternal Seva</p>
@@ -135,16 +137,16 @@ export default function Login({ onLoginSuccess }: LoginProps) {
                 <div className="bg-white rounded-[40px] shadow-2xl shadow-blue-900/10 border border-gray-100 relative overflow-hidden flex flex-col">
                     {/* Decorative Background Element */}
                     <div className="absolute top-0 right-0 w-32 h-32 bg-blue-50 rounded-full -mr-16 -mt-16 opacity-50"></div>
-                    
+
                     {/* Tabs */}
                     <div className="flex p-2 gap-2 bg-gray-50/50 border-b border-gray-100 relative z-10">
-                        <button 
+                        <button
                             onClick={() => { setActiveTab("login"); setError(""); }}
                             className={`flex-1 py-3 rounded-2xl font-bold text-sm transition-all ${activeTab === "login" ? "bg-white text-blue-900 shadow-sm border border-gray-100" : "text-gray-400 hover:text-gray-600"}`}
                         >
-                            Manager Login
+                            Member Login
                         </button>
-                        <button 
+                        <button
                             onClick={() => { setActiveTab("verify"); setError(""); }}
                             className={`flex-1 py-3 rounded-2xl font-bold text-sm transition-all ${activeTab === "verify" ? "bg-white text-blue-900 shadow-sm border border-gray-100" : "text-gray-400 hover:text-gray-600"}`}
                         >
@@ -165,7 +167,7 @@ export default function Login({ onLoginSuccess }: LoginProps) {
                                             <label className="text-xs font-black text-gray-400 uppercase tracking-[2px] ml-1">User ID</label>
                                             <div className="relative">
                                                 <User className="absolute left-5 top-1/2 -translate-y-1/2 text-blue-600" size={20} />
-                                                <input 
+                                                <input
                                                     type="text"
                                                     value={userId}
                                                     onChange={(e) => setUserId(e.target.value)}
@@ -179,7 +181,7 @@ export default function Login({ onLoginSuccess }: LoginProps) {
                                             <label className="text-xs font-black text-gray-400 uppercase tracking-[2px] ml-1">Password</label>
                                             <div className="relative">
                                                 <Lock className="absolute left-5 top-1/2 -translate-y-1/2 text-blue-600" size={20} />
-                                                <input 
+                                                <input
                                                     type="password"
                                                     value={password}
                                                     onChange={(e) => setPassword(e.target.value)}
@@ -225,7 +227,7 @@ export default function Login({ onLoginSuccess }: LoginProps) {
                                             <label className="text-xs font-black text-gray-400 uppercase tracking-[2px] ml-1">Select Branch</label>
                                             <div className="relative">
                                                 <MapPin className="absolute left-5 top-1/2 -translate-y-1/2 text-blue-600" size={20} />
-                                                <select 
+                                                <select
                                                     value={selectedBranch}
                                                     onChange={(e) => setSelectedBranch(e.target.value)}
                                                     className="w-full bg-gray-50 border-2 border-gray-100 focus:border-blue-500 focus:bg-white rounded-2xl pl-14 pr-12 py-4 outline-none transition-all font-bold text-gray-700 appearance-none cursor-pointer"
@@ -252,8 +254,8 @@ export default function Login({ onLoginSuccess }: LoginProps) {
                                         >
                                             Continue to Dashboard
                                         </button>
-                                        
-                                        <button 
+
+                                        <button
                                             onClick={() => { setAuthenticatedUser(null); setError(""); }}
                                             className="w-full text-[10px] font-black text-gray-400 uppercase tracking-[2px] hover:text-gray-600 transition-colors"
                                         >
@@ -272,7 +274,7 @@ export default function Login({ onLoginSuccess }: LoginProps) {
                                         <label className="text-xs font-black text-gray-400 uppercase tracking-[2px] ml-1">PAN Number</label>
                                         <div className="relative">
                                             <ShieldCheck className="absolute left-5 top-1/2 -translate-y-1/2 text-blue-600" size={20} />
-                                            <input 
+                                            <input
                                                 type="text"
                                                 value={panNumber}
                                                 onChange={(e) => setPanNumber(e.target.value.toUpperCase())}
@@ -317,7 +319,7 @@ export default function Login({ onLoginSuccess }: LoginProps) {
                                                             <FileText size={14} className="text-gray-400" />
                                                             <span className="text-[11px] font-bold text-gray-500">{donation.date}</span>
                                                         </div>
-                                                        <button 
+                                                        <button
                                                             onClick={() => handleViewDonation(donation.key)}
                                                             className="flex items-center gap-1 text-[11px] font-black text-blue-600 hover:text-blue-800 uppercase tracking-wider"
                                                         >
@@ -341,7 +343,7 @@ export default function Login({ onLoginSuccess }: LoginProps) {
 
                         <div className="mt-10 pt-8 border-t border-gray-50 text-center">
                             <p className="text-gray-400 text-[10px] font-bold uppercase tracking-widest leading-loose">
-                                {activeTab === "login" ? "Authorized Personnel Only" : "Public Verification Portal"}<br/>
+                                {activeTab === "login" ? "Authorized Personnel Only" : "Public Verification Portal"}<br />
                                 <span className="opacity-50">© {new Date().getFullYear()} USES Foundation</span>
                             </p>
                         </div>

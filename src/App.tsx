@@ -258,25 +258,26 @@ export default function App() {
 
         try {
             const canvas = await html2canvas(element, {
-                scale: 2,
+                scale: 1.5,
                 useCORS: true,
                 logging: false,
                 backgroundColor: "#ffffff",
                 ignoreElements: (el) => el.classList.contains('print:hidden')
             });
 
-            const imgData = canvas.toDataURL('image/png');
+            const imgData = canvas.toDataURL('image/jpeg', 0.75);
             const pdf = new jsPDF({
                 orientation: 'p',
                 unit: 'px',
-                format: 'a4'
+                format: 'a4',
+                compress: true
             });
 
             const imgProps = pdf.getImageProperties(imgData);
             const pdfWidth = pdf.internal.pageSize.getWidth();
             const pdfHeight = (imgProps.height * pdfWidth) / imgProps.width;
 
-            pdf.addImage(imgData, 'PNG', 0, 0, pdfWidth, pdfHeight);
+            pdf.addImage(imgData, 'JPEG', 0, 0, pdfWidth, pdfHeight, undefined, 'FAST');
             return pdf.output('blob');
         } catch (error: any) {
             console.error("PDF Generation Error:", error);
@@ -665,8 +666,14 @@ export default function App() {
                                         <h1 className="text-[34px] font-bold leading-tight font-sans" style={{ color: '#11057B' }}>USES Foundation</h1>
                                         <p className="text-[19px] font-bold mb-2 font-serif" style={{ color: '#11057B' }}>Universal Sadhana for Eternal Seva</p>
                                         
-                                        <p className="text-[15px]" style={{ color: '#11057B' }}>3/B, 1st Floor, Asad Compound, Opp. Mukund Hospital,</p>
-                                        <p className="text-[15px]" style={{ color: '#11057B' }}>Andheri Kurla Road, Marol Pipeline, Andheri East, Mumbai - 400059</p>
+                                        {selectedBranch === "Ajmer" ? (
+                                            <>
+                                                <p className="text-[15px]" style={{ color: '#11057B' }}>G Block - 15, Near Vardhaman Dairy, Vaishali Nagar, Ajmer - 305001</p>
+                                                <p className="text-[13px]" style={{ color: '#11057B' }}>Ho: 3/B, 1st Floor, Asad Compound, Marol Pipeline, Mumbai - 400059</p>
+                                            </>
+                                        ) : (
+                                            <p className="text-[15px]" style={{ color: '#11057B' }}>Ho: 3/B, 1st Floor, Asad Compound, Marol Pipeline, Mumbai - 400059</p>
+                                        )}
                                         <p className="text-[15px]" style={{ color: '#11057B' }}>www.usesfoundation.org</p>
                                         <p className="text-[15px] font-bold mt-1 tracking-wide" style={{ color: '#11057B' }}>Regd No: U85300MH2022NPL376368, PAN: AADCU0252E</p>
                                     </div>
