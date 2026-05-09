@@ -88,6 +88,7 @@ export default function App() {
     // AUTH STATE
     const [user, setUser] = useState<any>(null);
     const [selectedBranch, setSelectedBranch] = useState<string>(localStorage.getItem("selectedBranch") || "");
+    const [isAdmin, setIsAdmin] = useState<boolean>(localStorage.getItem("isAdmin") === "true");
     const [authLoading, setAuthLoading] = useState(true);
 
     const today = new Date().toISOString().split("T")[0];
@@ -134,10 +135,12 @@ export default function App() {
         return unsubscribe;
     }, []);
 
-    const handleLoginSuccess = (u: any, branch: string) => {
+    const handleLoginSuccess = (u: any, branch: string, adminStatus: boolean) => {
         setUser(u);
         setSelectedBranch(branch);
+        setIsAdmin(adminStatus);
         localStorage.setItem("selectedBranch", branch);
+        localStorage.setItem("isAdmin", adminStatus.toString());
         setFormData(prev => ({
             ...prev,
             receiptNo: getInitialReceiptNo(branch)
@@ -148,7 +151,9 @@ export default function App() {
         if (window.confirm("Are you sure you want to log out?")) {
             await signOut(auth);
             setSelectedBranch("");
+            setIsAdmin(false);
             localStorage.removeItem("selectedBranch");
+            localStorage.removeItem("isAdmin");
         }
     };
 
@@ -379,6 +384,10 @@ export default function App() {
     };
 
     const handleDeleteReceipt = async (fileName: string, receiptNo: string) => {
+        if (!isAdmin) {
+            alert("Deletion restricted. Only administrators can delete receipts.");
+            return;
+        }
         if (!window.confirm(`Are you sure you want to delete receipt ${receiptNo}?`)) return;
 
         setIsDeletingId(fileName);
@@ -679,9 +688,14 @@ export default function App() {
                                     </div>
 
                                     {/* DONATION RECEIPT Box */}
-                                    <div className="w-[160px] h-[80px] rounded text-white flex flex-col justify-center items-center p-2 mb-4 mt-2" style={{ background: '#11057B' }}>
+                                    <div className="w-[160px] h-auto min-h-[80px] rounded text-white flex flex-col justify-center items-center p-2 mb-4 mt-2" style={{ background: '#11057B' }}>
                                         <span className="text-lg font-semibold tracking-wider">DONATION</span>
                                         <span className="text-lg font-semibold tracking-wider">RECEIPT</span>
+                                        {selectedBranch && selectedBranch !== "National" && (
+                                            <div className="mt-1 pt-1 border-t border-white/20 w-4/5 text-center">
+                                                <span className="text-[11px] font-bold uppercase tracking-[0.2em]">{selectedBranch}</span>
+                                            </div>
+                                        )}
                                     </div>
                                 </div>
 
@@ -890,14 +904,16 @@ export default function App() {
                                                             >
                                                                 {isLoadingMetadata === record.id ? <Loader2 size={16} className="animate-spin" /> : <Edit size={16} />}
                                                             </button>
-                                                            <button 
-                                                                onClick={() => handleDeleteReceipt(record.id, record.receiptNo)}
-                                                                className="p-2 text-red-600 hover:bg-red-50 rounded-lg transition-colors"
-                                                                title="Delete Receipt"
-                                                                disabled={isDeletingId === record.id}
-                                                            >
-                                                                {isDeletingId === record.id ? <Loader2 size={16} className="animate-spin" /> : <Trash2 size={16} />}
-                                                            </button>
+                                                            {isAdmin && (
+                                                                <button 
+                                                                    onClick={() => handleDeleteReceipt(record.id, record.receiptNo)}
+                                                                    className="p-2 text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+                                                                    title="Delete Receipt"
+                                                                    disabled={isDeletingId === record.id}
+                                                                >
+                                                                    {isDeletingId === record.id ? <Loader2 size={16} className="animate-spin" /> : <Trash2 size={16} />}
+                                                                </button>
+                                                            )}
                                                         </div>
                                                     </td>
                                                 </tr>

@@ -6,7 +6,7 @@ import { MapPin, ChevronDown, CheckCircle2, Search, ShieldCheck, FileText, Exter
 import logoUrl from '../assets/logo/logo.png';
 
 interface LoginProps {
-    onLoginSuccess: (user: any, branch: string) => void;
+    onLoginSuccess: (user: any, branch: string, isAdmin: boolean) => void;
 }
 
 const BRANCHES = ["Mumbai", "National", "Ajmer"];
@@ -49,7 +49,8 @@ export default function Login({ onLoginSuccess }: LoginProps) {
             const userPrefix = normalizedId.split('@')[0];
             let authorized: string[] = [];
 
-            if (userPrefix === 'admin') {
+            const isAdmin = userPrefix === 'admin';
+            if (isAdmin) {
                 authorized = BRANCHES;
             } else {
                 // Check if user ID matches a branch name
@@ -64,7 +65,7 @@ export default function Login({ onLoginSuccess }: LoginProps) {
 
             if (authorized.length === 1) {
                 // Auto-select and finish
-                onLoginSuccess(result.user, authorized[0]);
+                onLoginSuccess(result.user, authorized[0], isAdmin);
             } else {
                 // Show branch selection
                 setAuthenticatedUser(result.user);
@@ -89,7 +90,9 @@ export default function Login({ onLoginSuccess }: LoginProps) {
             setError("Please select a branch to continue");
             return;
         }
-        onLoginSuccess(authenticatedUser, selectedBranch);
+        const userPrefix = (authenticatedUser.email || "").split('@')[0];
+        const isAdmin = userPrefix === 'admin';
+        onLoginSuccess(authenticatedUser, selectedBranch, isAdmin);
     };
 
     const handleVerifyPan = async (e: React.FormEvent) => {
