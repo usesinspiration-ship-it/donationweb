@@ -661,7 +661,7 @@ export default function App() {
 
                         {/* RECEIPT PREVIEW PANEL */}
                         <div className="w-full xl:w-2/3 flex justify-center items-start overflow-auto pb-20">
-                            <div id="receipt-print-area" className="bg-white w-[950px] min-w-[950px] shadow-2xl print:shadow-none text-black p-12 relative font-sans" style={{ background: '#ffffff', color: '#000000' }}>
+                            <div id="receipt-print-area" className="bg-white w-[950px] min-w-[950px] print:shadow-none text-black p-12 relative font-sans" style={{ background: '#ffffff', color: '#000000' }}>
                                 
                                 {/* Header: Logo, Address, Donation Receipt Box */}
                                 <div className="flex justify-between items-start mb-4">
@@ -692,7 +692,7 @@ export default function App() {
                                         <span className="text-lg font-semibold tracking-wider">DONATION</span>
                                         <span className="text-lg font-semibold tracking-wider">RECEIPT</span>
                                         {selectedBranch && selectedBranch !== "National" && (
-                                            <div className="mt-1 pt-1 border-t border-white/20 w-4/5 text-center">
+                                            <div className="mt-1 pt-1 border-t w-4/5 text-center" style={{ borderTopColor: 'rgba(255, 255, 255, 0.2)' }}>
                                                 <span className="text-[11px] font-bold uppercase tracking-[0.2em]">{selectedBranch}</span>
                                             </div>
                                         )}
