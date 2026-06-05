@@ -678,10 +678,10 @@ export default function App() {
                                         {selectedBranch === "Ajmer" ? (
                                             <>
                                                 <p className="text-[15px]" style={{ color: '#11057B' }}>G Block - 15, Near Vardhaman Dairy, Vaishali Nagar, Ajmer - 305001</p>
-                                                <p className="text-[13px]" style={{ color: '#11057B' }}>Ho: 3/B, 1st Floor, Asad Compound, Marol Pipeline, Mumbai - 400059</p>
+                                                <p className="text-[13px]" style={{ color: '#11057B' }}>Ho: A-103, Sai Prasad Building, Near MIDC Metro, Behind Jumboking, Kondivita, Andheri East, Mumbai, Maharashtra - 400093</p>
                                             </>
                                         ) : (
-                                            <p className="text-[15px]" style={{ color: '#11057B' }}>Ho: 3/B, 1st Floor, Asad Compound, Marol Pipeline, Mumbai - 400059</p>
+                                            <p className="text-[14px]" style={{ color: '#11057B' }}>Ho: A-103, Sai Prasad Building, Near MIDC Metro, Behind Jumboking, Kondivita, Andheri East, Mumbai, Maharashtra - 400093</p>
                                         )}
                                         <p className="text-[15px]" style={{ color: '#11057B' }}>www.usesfoundation.org</p>
                                         <p className="text-[15px] font-bold mt-1 tracking-wide" style={{ color: '#11057B' }}>Regd No: U85300MH2022NPL376368, PAN: AADCU0252E</p>
