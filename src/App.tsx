@@ -3,6 +3,7 @@ import { saveAs } from "file-saver";
 import jsPDF from 'jspdf';
 import html2canvas from 'html2canvas';
 import confetti from 'canvas-confetti';
+import Papa from 'papaparse';
 import { 
     Printer, 
     Save, 
@@ -15,7 +16,11 @@ import {
     Search,
     LogOut,
     User,
-    MapPin
+    MapPin,
+    Upload,
+    ChevronLeft,
+    SkipForward,
+    FileSpreadsheet
 } from 'lucide-react';
 
 // ASSETS & FIREBASE
@@ -84,6 +89,17 @@ interface ReceiptRecord {
     branch?: string;
 }
 
+interface ParsedReceipt {
+    date: string;
+    donorName: string;
+    city: string;
+    phoneNumber: string;
+    amount: string;
+    panNumber: string;
+    paymentMode: string;
+    purpose: string;
+}
+
 export default function App() {
     // AUTH STATE
     const [user, setUser] = useState<any>(null);
@@ -119,12 +135,247 @@ export default function App() {
     const [showConfirm, setShowConfirm] = useState(false);
     const [isUploading, setIsUploading] = useState(false);
     const [isFetching, setIsFetching] = useState(false);
-    const [view, setView] = useState<"form" | "history">("form");
+    const [view, setView] = useState<"form" | "history" | "bulk_import" | "bulk_review">("form");
     const [records, setRecords] = useState<ReceiptRecord[]>([]);
     const [isEditing, setIsEditing] = useState(false);
     const [isLoadingMetadata, setIsLoadingMetadata] = useState<string | null>(null);
     const [isDeletingId, setIsDeletingId] = useState<string | null>(null);
     const [searchQuery, setSearchQuery] = useState("");
+
+    const [pendingReceipts, setPendingReceipts] = useState<ParsedReceipt[]>([]);
+    const [currentReviewIndex, setCurrentReviewIndex] = useState(0);
+    const [selectedRecordKeys, setSelectedRecordKeys] = useState<Set<string>>(new Set());
+
+    const parseCsvDate = (dateStr: string) => {
+        if (!dateStr) return today;
+        const parts = dateStr.split('-');
+        if (parts.length === 3) {
+            const day = parts[0].padStart(2, '0');
+            const monthStr = parts[1].toLowerCase();
+            const year = parts[2].length === 2 ? `20${parts[2]}` : parts[2];
+            const months: Record<string, string> = { jan: '01', feb: '02', mar: '03', apr: '04', may: '05', jun: '06', jul: '07', aug: '08', sep: '09', oct: '10', nov: '11', dec: '12' };
+            const month = months[monthStr.substring(0, 3)] || '01';
+            return `${year}-${month}-${day}`;
+        }
+        const d = new Date(dateStr);
+        if (!isNaN(d.getTime())) return d.toISOString().split('T')[0];
+        return today;
+    };
+
+    const cleanDonorName = (name: string) => {
+        if (!name) return "";
+        return name.replace(/^Donation Received\s*-\s*/i, "").replace(/^Donation Received\s*/i, "").trim();
+    };
+
+    const loadReviewReceipt = (receipt: ParsedReceipt, customReceiptNo?: string) => {
+        setFormData(prev => ({
+            ...prev,
+            receiptNo: customReceiptNo !== undefined ? customReceiptNo : prev.receiptNo,
+            date: receipt.date,
+            donorName: receipt.donorName,
+            city: receipt.city,
+            phoneNumber: receipt.phoneNumber,
+            amount: receipt.amount,
+            panNumber: receipt.panNumber,
+            paymentMode: ["NEFT", "Cheque", "Cash", "UPI", "DD"].includes(receipt.paymentMode) ? receipt.paymentMode : "NEFT",
+            purpose: ["General Contribution", "Specific Project"].includes(receipt.purpose) ? receipt.purpose : "General Contribution",
+            specificPurpose: ""
+        }));
+    };
+
+    const processCSVData = (data: any[]) => {
+        const parsed = data.map(row => {
+            const amtRaw = row["Amt"] || row["Amount"] || row["amount"] || "";
+            // Clean amount string from commas
+            const amount = amtRaw ? amtRaw.toString().replace(/,/g, '').trim() : "";
+            
+            // Try to figure out payment mode
+            let paymentMode = row["Payment mode"] || row["Payment Mode"] || "NEFT";
+            if (paymentMode.toLowerCase() === "online") {
+                paymentMode = "NEFT"; // Default online to NEFT
+            }
+
+            return {
+                date: parseCsvDate(row["Date"] || row["date"] || ""),
+                donorName: cleanDonorName(row["Name"] || row["name"] || row["Donor Name"] || ""),
+                city: row["City"] || row["city"] || "",
+                phoneNumber: (row["Phone no"] || row["Phone"] || row["phoneNumber"] || row["Phone Number"] || "").toString().trim(),
+                amount: amount,
+                panNumber: (row["Pan card"] || row["PAN"] || row["Pan Number"] || row["panNumber"] || "").toString().trim().toUpperCase(),
+                paymentMode: paymentMode,
+                purpose: row["Purpose"] || "General Contribution"
+            };
+        }).filter(r => {
+            if (!r.donorName && !r.amount) return false;
+            if (!selectedBranch) return true;
+
+            const cityValue = (r.city || "").trim().toLowerCase();
+            const branchValue = selectedBranch.trim().toLowerCase();
+
+            if (branchValue === "mumbai") {
+                return cityValue === "mumbai";
+            } else if (branchValue === "ajmer") {
+                return cityValue === "ajmer";
+            } else if (branchValue === "national") {
+                return cityValue === "" || cityValue === "national";
+            }
+            return true;
+        });
+        
+        if (parsed.length > 0) {
+            setPendingReceipts(parsed);
+            setCurrentReviewIndex(0);
+            loadReviewReceipt(parsed[0]);
+            setView("bulk_review");
+        } else {
+            alert("No valid data found in CSV");
+        }
+    };
+
+    const handleCSVUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+        const file = e.target.files?.[0];
+        if (!file) return;
+        Papa.parse(file, {
+            header: true,
+            skipEmptyLines: true,
+            complete: (results) => {
+                processCSVData(results.data);
+            }
+        });
+        e.target.value = ''; // reset
+    };
+
+    const handleUploadAll = async () => {
+        if (pendingReceipts.length === 0) return;
+        const remainingCount = pendingReceipts.length - currentReviewIndex;
+        if (!window.confirm(`Are you sure you want to upload all remaining ${remainingCount} receipts to the cloud automatically? (This will not download PDFs to your computer to prevent browser flooding).`)) return;
+        
+        setIsUploading(true);
+        try {
+            let nextNo = formData.receiptNo; // Start with current number
+            
+            for (let i = currentReviewIndex; i < pendingReceipts.length; i++) {
+                const receipt = pendingReceipts[i];
+                setCurrentReviewIndex(i);
+                
+                // Update form state for the current item
+                loadReviewReceipt(receipt, nextNo);
+                
+                // Wait for React to render the DOM
+                await new Promise(resolve => setTimeout(resolve, 350));
+                
+                // Generate PDF Blob
+                const blob = await generatePdfBlob();
+                if (!blob) {
+                    throw new Error(`Failed to generate PDF for ${receipt.donorName}`);
+                }
+                
+                const fileName = `Receipt_${nextNo.replace(/[^a-zA-Z0-9]/g, "_")}.pdf`;
+                
+                // Upload to R2 via local proxy (no local download here to avoid flooding)
+                const response = await fetch(`${PROXY_URL}/upload?fileName=${fileName}`, {
+                    method: 'PUT',
+                    body: blob,
+                    headers: {
+                        'X-Metadata': JSON.stringify({
+                            receiptno: nextNo,
+                            donorname: receipt.donorName,
+                            pannumber: receipt.panNumber,
+                            city: receipt.city,
+                            phonenumber: receipt.phoneNumber,
+                            amount: receipt.amount,
+                            paymentmode: ["NEFT", "Cheque", "Cash", "UPI", "DD"].includes(receipt.paymentMode) ? receipt.paymentMode : "NEFT",
+                            purpose: ["General Contribution", "Specific Project"].includes(receipt.purpose) ? receipt.purpose : "General Contribution",
+                            specificpurpose: "",
+                            date: receipt.date,
+                            branch: selectedBranch
+                        })
+                    }
+                });
+                
+                if (!response.ok) {
+                    const err = await response.json();
+                    throw new Error(err.error || `Upload failed for ${receipt.donorName}`);
+                }
+                
+                // Generate next receipt number for next iteration
+                if (i < pendingReceipts.length - 1) {
+                    nextNo = getNextReceiptNo();
+                } else {
+                    // Final iteration done, increment one last time for future manual receipts
+                    getNextReceiptNo();
+                }
+            }
+            
+            confetti({
+                particleCount: 200,
+                spread: 120,
+                origin: { y: 0.6 }
+            });
+            alert("All receipts saved and uploaded successfully!");
+            setPendingReceipts([]);
+            setCurrentReviewIndex(0);
+            setView("form");
+        } catch (error: any) {
+            alert("Error during bulk upload: " + error.message);
+            incrementReceiptNo();
+        } finally {
+            setIsUploading(false);
+        }
+    };
+
+    const toggleSelectRecord = (key: string) => {
+        setSelectedRecordKeys(prev => {
+            const next = new Set(prev);
+            if (next.has(key)) {
+                next.delete(key);
+            } else {
+                next.add(key);
+            }
+            return next;
+        });
+    };
+
+    const toggleSelectAll = () => {
+        if (selectedRecordKeys.size === filteredRecords.length) {
+            setSelectedRecordKeys(new Set());
+        } else {
+            setSelectedRecordKeys(new Set(filteredRecords.map(r => r.id)));
+        }
+    };
+
+    const handleBulkDelete = async () => {
+        if (!isAdmin) return;
+        if (selectedRecordKeys.size === 0) return;
+        
+        if (!window.confirm(`Are you sure you want to delete the ${selectedRecordKeys.size} selected receipts? This will permanently delete them from both the database and cloud storage.`)) return;
+        
+        setIsFetching(true);
+        try {
+            const keysArray = Array.from(selectedRecordKeys);
+            let successCount = 0;
+            
+            for (const key of keysArray) {
+                try {
+                    const res = await fetch(`${PROXY_URL}/delete?file=${key}`, { method: 'DELETE' });
+                    const data = await res.json();
+                    if (data.success) {
+                        successCount++;
+                    }
+                } catch (err) {
+                    console.error(`Failed to delete ${key}`, err);
+                }
+            }
+            
+            alert(`Successfully deleted ${successCount} of ${keysArray.length} receipts.`);
+            setSelectedRecordKeys(new Set());
+            fetchR2History();
+        } catch (error) {
+            alert("Error during bulk delete.");
+        } finally {
+            setIsFetching(false);
+        }
+    };
 
     // MONITOR AUTH
     useEffect(() => {
@@ -157,17 +408,24 @@ export default function App() {
         }
     };
 
-    const incrementReceiptNo = () => {
-        if (!selectedBranch) return;
+    const getNextReceiptNo = () => {
+        if (!selectedBranch) return "";
         const prefix = BRANCH_PREFIXES[selectedBranch] || "USES/";
         const saved = localStorage.getItem(`receiptCount_${selectedBranch}`);
         const count = saved ? parseInt(saved, 10) : 1;
         const newCount = count + 1;
         localStorage.setItem(`receiptCount_${selectedBranch}`, newCount.toString());
-        setFormData(prev => ({
-            ...prev,
-            receiptNo: `${prefix}${String(newCount).padStart(3, '0')}`
-        }));
+        return `${prefix}${String(newCount).padStart(3, '0')}`;
+    };
+
+    const incrementReceiptNo = () => {
+        const nextNo = getNextReceiptNo();
+        if (nextNo) {
+            setFormData(prev => ({
+                ...prev,
+                receiptNo: nextNo
+            }));
+        }
     };
 
     const handleEditCounter = () => {
@@ -203,8 +461,8 @@ export default function App() {
                     panNumber: f.metadata?.pannumber || "---",
                     city: f.metadata?.city || "---",
                     phoneNumber: f.metadata?.phonenumber || "---",
-                    date: f.metadata?.date || new Date(f.lastModified).toLocaleDateString(),
-                    timestamp: new Date(f.lastModified).toLocaleString(),
+                    date: f.metadata?.date || "---",
+                    timestamp: f.metadata?.timestamp ? new Date(f.metadata.timestamp).toLocaleString() : "---",
                     branch: f.metadata?.branch || "Unassigned"
                 }));
                 
@@ -220,7 +478,7 @@ export default function App() {
     };
 
     useEffect(() => {
-        if (view === "history" && user && selectedBranch) fetchR2History();
+        if (user && selectedBranch) fetchR2History();
     }, [view, user, selectedBranch]);
 
     useEffect(() => {
@@ -272,7 +530,7 @@ export default function App() {
 
             const imgData = canvas.toDataURL('image/jpeg', 0.75);
             const pdf = new jsPDF({
-                orientation: 'p',
+                orientation: 'l',
                 unit: 'px',
                 format: 'a4',
                 compress: true
@@ -280,9 +538,19 @@ export default function App() {
 
             const imgProps = pdf.getImageProperties(imgData);
             const pdfWidth = pdf.internal.pageSize.getWidth();
-            const pdfHeight = (imgProps.height * pdfWidth) / imgProps.width;
+            const pdfHeight = pdf.internal.pageSize.getHeight();
 
-            pdf.addImage(imgData, 'JPEG', 0, 0, pdfWidth, pdfHeight, undefined, 'FAST');
+            const widthRatio = pdfWidth / imgProps.width;
+            const heightRatio = pdfHeight / imgProps.height;
+            const ratio = Math.min(widthRatio, heightRatio);
+
+            const renderWidth = imgProps.width * ratio;
+            const renderHeight = imgProps.height * ratio;
+
+            const xOffset = (pdfWidth - renderWidth) / 2;
+            const yOffset = (pdfHeight - renderHeight) / 2;
+
+            pdf.addImage(imgData, 'JPEG', xOffset, yOffset, renderWidth, renderHeight, undefined, 'FAST');
             return pdf.output('blob');
         } catch (error: any) {
             console.error("PDF Generation Error:", error);
@@ -333,10 +601,36 @@ export default function App() {
                     origin: { y: 0.6 },
                     colors: ['#1e3a8a', '#3b82f6', '#ffffff']
                 });
-                if (!isEditing) incrementReceiptNo();
-                setIsEditing(false);
+                
+                if (view === "bulk_review") {
+                    const updatedPending = [...pendingReceipts];
+                    updatedPending.splice(currentReviewIndex, 1);
+                    
+                    if (updatedPending.length > 0) {
+                        setPendingReceipts(updatedPending);
+                        
+                        // Adjust index if we were at the last element
+                        let nextIndex = currentReviewIndex;
+                        if (nextIndex >= updatedPending.length) {
+                            nextIndex = updatedPending.length - 1;
+                        }
+                        setCurrentReviewIndex(nextIndex);
+                        
+                        const nextReceiptNo = getNextReceiptNo();
+                        loadReviewReceipt(updatedPending[nextIndex], nextReceiptNo);
+                    } else {
+                        alert("Bulk upload completed successfully!");
+                        incrementReceiptNo();
+                        setPendingReceipts([]);
+                        setCurrentReviewIndex(0);
+                        setView("form");
+                    }
+                } else {
+                    if (!isEditing) incrementReceiptNo();
+                    setIsEditing(false);
+                    alert("Receipt saved and uploaded successfully!");
+                }
                 setShowConfirm(false);
-                alert("Receipt saved and uploaded successfully!");
             } else {
                 const err = await response.json();
                 throw new Error(err.error || "Upload failed");
@@ -466,6 +760,21 @@ export default function App() {
                         <History size={16} />
                         History ({records.length})
                     </button>
+                    {isAdmin && (
+                        <button 
+                            onClick={() => {
+                                if (pendingReceipts.length > 0) {
+                                    setView("bulk_review");
+                                } else {
+                                    setView("bulk_import");
+                                }
+                            }}
+                            className={`px-6 py-2 rounded-lg font-bold transition-all flex items-center gap-2 ${view === "bulk_import" || view === "bulk_review" ? "bg-white text-blue-900 shadow-sm" : "text-gray-500 hover:text-gray-700"}`}
+                        >
+                            <FileSpreadsheet size={16} />
+                            {pendingReceipts.length > 0 ? `Bulk Review (${pendingReceipts.length - currentReviewIndex})` : "Bulk Import"}
+                        </button>
+                    )}
                 </nav>
 
                 <div className="flex items-center gap-6">
@@ -493,15 +802,114 @@ export default function App() {
             </header>
 
             <main className="flex-1">
-                {view === "form" ? (
+                {(view === "form" || view === "bulk_review") ? (
                     <div className="flex flex-col xl:flex-row gap-8 p-4 xl:p-8 max-w-[1600px] mx-auto min-h-screen print:bg-white print:p-0">
+                        {/* FORM PANEL - RENDERED AS USUAL */}
+                        {/* ... but the JSX was actually duplicated, wait let's just make it clear ... */}
+                        {/* Wait, I should keep the actual panel contents. I will replace it cleanly in the next chunk, but let's replace the whole main block structure. */}
+                        {/* Actually, let's keep the Form layout and structure the switch statement correctly. */}
+                        {/* Let's view the exact main tag wrapper again to make sure I target the right block. */}
+                        {/* Let's write the bulk_import block. */}
+                        {/* I can see that {view === "form" ? ( ... ) : ( ... )} */}
+                        {/* I will change the start of this block and the end. */}
+                        {/* I will do: */}
+                        {/* Start: line 496 `const isValid = formData.receiptNo && formData.donorName && formData.amount; ...` */}
+                        {/* Let's get the exact code around the end to make it a neat nested ternary or if block. */}
                         {/* FORM PANEL */}
                         <div className="w-full xl:w-1/3 print:hidden bg-white rounded-2xl shadow-md p-8 border border-gray-100 flex flex-col pt-10 h-fit">
+                            {view === "bulk_review" && (
+                                <div className="bg-blue-50 border border-blue-200 rounded-xl p-4 mb-6 flex flex-col gap-3 animate-fade-in-down">
+                                    <div className="flex justify-between items-center">
+                                        <div>
+                                            <p className="text-sm font-bold text-blue-900">Bulk Review Mode</p>
+                                            <p className="text-xs text-blue-700 font-semibold">Receipt {currentReviewIndex + 1} of {pendingReceipts.length}</p>
+                                        </div>
+                                        <div className="flex gap-2">
+                                            <button 
+                                                onClick={() => {
+                                                    if (window.confirm("Are you sure you want to discard this receipt from the bulk queue?")) {
+                                                        const updatedPending = [...pendingReceipts];
+                                                        updatedPending.splice(currentReviewIndex, 1);
+                                                        setPendingReceipts(updatedPending);
+                                                        
+                                                        if (updatedPending.length === 0) {
+                                                            alert("Bulk queue is now empty!");
+                                                            setView("form");
+                                                            setCurrentReviewIndex(0);
+                                                        } else {
+                                                            let nextIndex = currentReviewIndex;
+                                                            if (nextIndex >= updatedPending.length) {
+                                                                nextIndex = updatedPending.length - 1;
+                                                            }
+                                                            setCurrentReviewIndex(nextIndex);
+                                                            loadReviewReceipt(updatedPending[nextIndex]);
+                                                        }
+                                                    }
+                                                }}
+                                                className="px-3 py-1 bg-amber-50 hover:bg-amber-100 text-amber-700 border border-amber-200 rounded-lg text-xs font-bold transition-all"
+                                                title="Discard this receipt from queue"
+                                            >
+                                                Discard
+                                            </button>
+                                            <button 
+                                                onClick={() => {
+                                                    if (window.confirm("Are you sure you want to exit bulk review? Your progress will be reset.")) {
+                                                        setPendingReceipts([]);
+                                                        setView("form");
+                                                    }
+                                                }}
+                                                className="px-3 py-1 bg-red-50 hover:bg-red-100 text-red-700 border border-red-200 rounded-lg text-xs font-bold transition-all"
+                                            >
+                                                Exit Bulk
+                                            </button>
+                                        </div>
+                                    </div>
+                                    <div className="flex gap-2 w-full">
+                                        <button 
+                                            onClick={() => {
+                                                if (currentReviewIndex > 0) {
+                                                    const prev = currentReviewIndex - 1;
+                                                    setCurrentReviewIndex(prev);
+                                                    loadReviewReceipt(pendingReceipts[prev]);
+                                                }
+                                            }}
+                                            disabled={currentReviewIndex === 0}
+                                            className="flex-1 flex justify-center items-center gap-1 py-2 bg-white rounded-lg border border-blue-200 text-blue-700 hover:bg-blue-50 disabled:opacity-50 disabled:hover:bg-white text-xs font-bold transition-all"
+                                        >
+                                            <ChevronLeft size={14} /> Prev
+                                        </button>
+                                        <button 
+                                            onClick={() => {
+                                                if (currentReviewIndex < pendingReceipts.length - 1) {
+                                                    const next = currentReviewIndex + 1;
+                                                    setCurrentReviewIndex(next);
+                                                    loadReviewReceipt(pendingReceipts[next]);
+                                                } else {
+                                                    alert("Reached the end of bulk receipts.");
+                                                }
+                                            }}
+                                            disabled={currentReviewIndex === pendingReceipts.length - 1}
+                                            className="flex-1 flex justify-center items-center gap-1 py-2 bg-white rounded-lg border border-blue-200 text-blue-700 hover:bg-blue-50 disabled:opacity-50 disabled:hover:bg-white text-xs font-bold transition-all"
+                                        >
+                                            Skip <SkipForward size={14} />
+                                        </button>
+                                    </div>
+                                    <button
+                                        onClick={handleUploadAll}
+                                        disabled={isUploading}
+                                        className="w-full mt-2 py-2.5 px-4 bg-blue-800 hover:bg-blue-900 text-white rounded-lg text-xs font-bold transition-all shadow-sm flex items-center justify-center gap-2 active:scale-95 disabled:opacity-50 disabled:hover:bg-blue-800"
+                                    >
+                                        {isUploading ? <Loader2 className="animate-spin" size={14} /> : <Upload size={14} />}
+                                        Upload All Remaining ({pendingReceipts.length - currentReviewIndex})
+                                    </button>
+                                </div>
+                            )}
+
                             <div className="mb-8">
                                 <div className="flex justify-between items-start">
                                     <div>
                                         <h2 className="text-3xl font-extrabold text-blue-900 tracking-tight">
-                                            {isEditing ? "Edit Receipt" : "Generate Receipt"}
+                                            {view === "bulk_review" ? "Review Receipt" : isEditing ? "Edit Receipt" : "Generate Receipt"}
                                         </h2>
                                         <p className="text-gray-500 font-medium mt-2">Managing records for <span className="text-blue-600 font-bold">{selectedBranch}</span></p>
                                     </div>
@@ -524,7 +932,7 @@ export default function App() {
                                     <div className="flex-1">
                                         <div className="flex justify-between items-center mb-2">
                                             <label className="block text-sm font-bold text-gray-700">Receipt Number <span className="text-red-500">*</span></label>
-                                            {!isEditing && (
+                                            {!isEditing && isAdmin && (
                                                 <button onClick={handleEditCounter} title="Reset Counter" type="button" className="text-blue-600 hover:text-blue-800 transition">
                                                     <Edit size={14} />
                                                 </button>
@@ -532,12 +940,15 @@ export default function App() {
                                             {isEditing && (
                                                 <span className="text-[10px] font-bold text-amber-600 bg-amber-50 border border-amber-200 px-2 py-0.5 rounded-full uppercase tracking-wide">Locked</span>
                                             )}
+                                            {!isAdmin && (
+                                                <span className="text-[10px] font-bold text-gray-500 bg-gray-50 border border-gray-200 px-2 py-0.5 rounded-full uppercase tracking-wide">Locked</span>
+                                            )}
                                         </div>
                                         <input 
                                             type="text" name="receiptNo" value={formData.receiptNo} onChange={handleChange}
                                             placeholder={`e.g., ${BRANCH_PREFIXES[selectedBranch] || "USES/"}028`}
-                                            disabled={isEditing}
-                                            className={`w-full border rounded-lg px-4 py-3 outline-none transition uppercase font-semibold ${isEditing ? 'border-gray-200 bg-gray-100 text-gray-400 cursor-not-allowed' : 'border-gray-300 bg-gray-50 focus:ring-2 focus:ring-blue-600'}`}
+                                            disabled={isEditing || !isAdmin}
+                                            className={`w-full border rounded-lg px-4 py-3 outline-none transition uppercase font-semibold ${(isEditing || !isAdmin) ? 'border-gray-200 bg-gray-100 text-gray-400 cursor-not-allowed' : 'border-gray-300 bg-gray-50 focus:ring-2 focus:ring-blue-600'}`}
                                         />
                                     </div>
                                     <div className="flex-1">
@@ -802,6 +1213,57 @@ export default function App() {
                             </div>
                         )}
                     </div>
+                ) : view === "bulk_import" ? (
+                    <div className="flex flex-col p-8 max-w-4xl mx-auto min-h-screen">
+                        <div className="bg-white rounded-2xl shadow-md p-8 border border-gray-100">
+                            <h2 className="text-3xl font-extrabold text-blue-900 tracking-tight mb-4 flex items-center gap-2">
+                                <FileSpreadsheet className="text-blue-600" size={32} /> Bulk Import Receipts
+                            </h2>
+                            <p className="text-gray-500 mb-8">Upload a CSV file to automatically generate a queue of receipts. You can review them one by one, edit if needed, and confirm before saving.</p>
+                            
+                            <div className="flex flex-col gap-6">
+                                <div className="border-2 border-dashed border-gray-300 rounded-xl p-12 text-center hover:border-blue-500 transition-colors bg-gray-50 relative group">
+                                    <Upload size={48} className="mx-auto text-blue-400 mb-4 group-hover:scale-110 transition-transform" />
+                                    <p className="text-lg font-bold text-gray-700 mb-2">Upload CSV File</p>
+                                    <p className="text-sm text-gray-500 mb-6">Click the button below to select your CSV file.</p>
+                                    <input 
+                                        type="file" 
+                                        accept=".csv" 
+                                        onChange={handleCSVUpload}
+                                        className="hidden" 
+                                        id="csv-upload"
+                                    />
+                                    <label htmlFor="csv-upload" className="bg-blue-800 hover:bg-blue-900 text-white px-6 py-3 rounded-lg font-bold cursor-pointer transition-colors inline-flex items-center gap-2 shadow-md hover:shadow-lg active:scale-95 transition-all">
+                                        <Upload size={18} /> Select File
+                                    </label>
+                                </div>
+                                
+                                <div className="bg-blue-50 p-6 rounded-xl border border-blue-100">
+                                    <h3 className="font-bold text-blue-900 mb-2">CSV Column Configuration</h3>
+                                    <p className="text-sm text-blue-800 mb-4">Ensure your CSV contains the following column headers exactly:</p>
+                                    <div className="flex flex-wrap gap-2 mb-6">
+                                        {["Date", "Name", "Pan card", "Phone no", "Payment mode", "City", "Amt"].map(h => (
+                                            <span key={h} className="bg-white px-3 py-1.5 rounded-md text-xs font-bold text-blue-900 border border-blue-200 shadow-sm">{h}</span>
+                                        ))}
+                                    </div>
+                                    <button 
+                                        onClick={() => {
+                                            const csvData = "Sr no,Date,Name,Pan card,Phone no,Payment mode,City,Amt\n1,01-Apr-26,Nishant Kumar Jaiswal,AGBPJ4914D,93046 22622,Online,Mumbai,1000.00\n2,12-Apr-26,Bhagwati Pathak,BAWPP4118H,94213 40799,Online,Mumbai,2000.00";
+                                            const blob = new Blob([csvData], { type: 'text/csv;charset=utf-8;' });
+                                            const url = window.URL.createObjectURL(blob);
+                                            const a = document.createElement('a');
+                                            a.href = url;
+                                            a.download = 'Donation_list_template.csv';
+                                            a.click();
+                                        }}
+                                        className="text-sm font-bold text-blue-700 hover:text-blue-900 underline flex items-center gap-1"
+                                    >
+                                        Download Example / Template CSV
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
                 ) : (
                     <div className="p-8 max-w-[1800px] mx-auto w-full">
                         <div className="bg-white rounded-2xl shadow-md border border-gray-100 overflow-hidden">
@@ -810,7 +1272,15 @@ export default function App() {
                                     <h2 className="text-2xl font-extrabold text-blue-900">Receipt History ({selectedBranch})</h2>
                                     <p className="text-gray-500 font-medium mt-1">Cloud synchronized historical records</p>
                                 </div>
-                                <div className="flex gap-4">
+                                <div className="flex gap-4 items-center">
+                                    {isAdmin && selectedRecordKeys.size > 0 && (
+                                        <button
+                                            onClick={handleBulkDelete}
+                                            className="px-4 py-2 bg-red-600 hover:bg-red-700 text-white font-bold text-sm rounded-lg flex items-center gap-2 transition-all shadow-sm active:scale-95 animate-fade-in-down"
+                                        >
+                                            <Trash2 size={16} /> Delete Selected ({selectedRecordKeys.size})
+                                        </button>
+                                    )}
                                     <div className="relative">
                                         <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={16} />
                                         <input 
@@ -831,6 +1301,16 @@ export default function App() {
                                 <table className="w-full text-left">
                                     <thead className="bg-gray-50 border-b border-gray-100">
                                         <tr>
+                                            {isAdmin && (
+                                                <th className="px-6 py-4 w-12 text-left">
+                                                    <input 
+                                                        type="checkbox"
+                                                        checked={filteredRecords.length > 0 && selectedRecordKeys.size === filteredRecords.length}
+                                                        onChange={toggleSelectAll}
+                                                        className="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500 cursor-pointer"
+                                                    />
+                                                </th>
+                                            )}
                                             <th className="px-6 py-4 font-bold text-gray-700 text-[11px] uppercase tracking-wider">Receipt No</th>
                                             <th className="px-6 py-4 font-bold text-gray-700 text-[11px] uppercase tracking-wider">Donor Name</th>
                                             <th className="px-6 py-4 font-bold text-gray-700 text-[11px] uppercase tracking-wider">City</th>
@@ -864,7 +1344,17 @@ export default function App() {
                                             </tr>
                                         ) : (
                                             filteredRecords.map((record) => (
-                                                <tr key={record.id} className="hover:bg-gray-50 transition-colors group">
+                                                <tr key={record.id} className={`hover:bg-gray-50 transition-colors group ${selectedRecordKeys.has(record.id) ? 'bg-blue-50/40 hover:bg-blue-50/60' : ''}`}>
+                                                    {isAdmin && (
+                                                        <td className="px-6 py-4">
+                                                            <input 
+                                                                type="checkbox"
+                                                                checked={selectedRecordKeys.has(record.id)}
+                                                                onChange={() => toggleSelectRecord(record.id)}
+                                                                className="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500 cursor-pointer"
+                                                            />
+                                                        </td>
+                                                    )}
                                                     <td className="px-6 py-4">
                                                         <span className="font-bold text-blue-900 uppercase tracking-wide text-xs">{record.receiptNo}</span>
                                                     </td>

@@ -107,7 +107,7 @@ app.get('/list', async (req, res) => {
         city: item.city,
         phonenumber: item.phone_number,
         date: item.date,
-        timestamp: item.timestamp,
+        timestamp: item.timestamp || item.created_at,
         branch: item.branch
       }
     }));
