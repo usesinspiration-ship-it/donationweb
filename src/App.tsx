@@ -760,21 +760,19 @@ export default function App() {
                         <History size={16} />
                         History ({records.length})
                     </button>
-                    {isAdmin && (
-                        <button 
-                            onClick={() => {
-                                if (pendingReceipts.length > 0) {
-                                    setView("bulk_review");
-                                } else {
-                                    setView("bulk_import");
-                                }
-                            }}
-                            className={`px-6 py-2 rounded-lg font-bold transition-all flex items-center gap-2 ${view === "bulk_import" || view === "bulk_review" ? "bg-white text-blue-900 shadow-sm" : "text-gray-500 hover:text-gray-700"}`}
-                        >
-                            <FileSpreadsheet size={16} />
-                            {pendingReceipts.length > 0 ? `Bulk Review (${pendingReceipts.length - currentReviewIndex})` : "Bulk Import"}
-                        </button>
-                    )}
+                    <button 
+                        onClick={() => {
+                            if (pendingReceipts.length > 0) {
+                                setView("bulk_review");
+                            } else {
+                                setView("bulk_import");
+                            }
+                        }}
+                        className={`px-6 py-2 rounded-lg font-bold transition-all flex items-center gap-2 ${view === "bulk_import" || view === "bulk_review" ? "bg-white text-blue-900 shadow-sm" : "text-gray-500 hover:text-gray-700"}`}
+                    >
+                        <FileSpreadsheet size={16} />
+                        {pendingReceipts.length > 0 ? `Bulk Review (${pendingReceipts.length - currentReviewIndex})` : "Bulk Import"}
+                    </button>
                 </nav>
 
                 <div className="flex items-center gap-6">
