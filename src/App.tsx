@@ -4,14 +4,14 @@ import jsPDF from 'jspdf';
 import html2canvas from 'html2canvas';
 import confetti from 'canvas-confetti';
 import Papa from 'papaparse';
-import { 
-    Printer, 
-    Save, 
-    History, 
-    PlusCircle, 
-    Trash2, 
-    Eye, 
-    Edit, 
+import {
+    Printer,
+    Save,
+    History,
+    PlusCircle,
+    Trash2,
+    Eye,
+    Edit,
     Loader2,
     Search,
     LogOut,
@@ -128,7 +128,7 @@ export default function App() {
         amount: "13000",
         amountWords: "",
         paymentMode: "NEFT",
-        purpose: "General Contribution",
+        purpose: "General Donation",
         specificPurpose: ""
     });
 
@@ -148,15 +148,36 @@ export default function App() {
 
     const parseCsvDate = (dateStr: string) => {
         if (!dateStr) return today;
+        
+        // Handle dd/mm/yyyy
+        if (dateStr.includes('/')) {
+            const slashParts = dateStr.split('/');
+            if (slashParts.length === 3) {
+                const day = slashParts[0].padStart(2, '0');
+                const month = slashParts[1].padStart(2, '0');
+                const year = slashParts[2].length === 2 ? `20${slashParts[2]}` : slashParts[2];
+                return `${year}-${month}-${day}`;
+            }
+        }
+        
+        // Handle dd-MMM-yy or dd-mm-yyyy
         const parts = dateStr.split('-');
         if (parts.length === 3) {
             const day = parts[0].padStart(2, '0');
-            const monthStr = parts[1].toLowerCase();
+            let monthStr = parts[1].toLowerCase();
             const year = parts[2].length === 2 ? `20${parts[2]}` : parts[2];
-            const months: Record<string, string> = { jan: '01', feb: '02', mar: '03', apr: '04', may: '05', jun: '06', jul: '07', aug: '08', sep: '09', oct: '10', nov: '11', dec: '12' };
-            const month = months[monthStr.substring(0, 3)] || '01';
+            
+            // Check if month is numeric or string
+            let month = '01';
+            if (!isNaN(Number(monthStr))) {
+                month = monthStr.padStart(2, '0');
+            } else {
+                const months: Record<string, string> = { jan: '01', feb: '02', mar: '03', apr: '04', may: '05', jun: '06', jul: '07', aug: '08', sep: '09', oct: '10', nov: '11', dec: '12' };
+                month = months[monthStr.substring(0, 3)] || '01';
+            }
             return `${year}-${month}-${day}`;
         }
+        
         const d = new Date(dateStr);
         if (!isNaN(d.getTime())) return d.toISOString().split('T')[0];
         return today;
@@ -178,7 +199,7 @@ export default function App() {
             amount: receipt.amount,
             panNumber: receipt.panNumber,
             paymentMode: ["NEFT", "Cheque", "Cash", "UPI", "DD"].includes(receipt.paymentMode) ? receipt.paymentMode : "NEFT",
-            purpose: ["General Contribution", "Specific Project"].includes(receipt.purpose) ? receipt.purpose : "General Contribution",
+            purpose: ["General Donation", "Specific Project", "Personal Donation"].includes(receipt.purpose) ? receipt.purpose : "General Donation",
             specificPurpose: ""
         }));
     };
@@ -188,7 +209,7 @@ export default function App() {
             const amtRaw = row["Amt"] || row["Amount"] || row["amount"] || "";
             // Clean amount string from commas
             const amount = amtRaw ? amtRaw.toString().replace(/,/g, '').trim() : "";
-            
+
             // Try to figure out payment mode
             let paymentMode = row["Payment mode"] || row["Payment Mode"] || "NEFT";
             if (paymentMode.toLowerCase() === "online") {
@@ -203,7 +224,7 @@ export default function App() {
                 amount: amount,
                 panNumber: (row["Pan card"] || row["PAN"] || row["Pan Number"] || row["panNumber"] || "").toString().trim().toUpperCase(),
                 paymentMode: paymentMode,
-                purpose: row["Purpose"] || "General Contribution"
+                purpose: row["Donation"] || row["donation"] || row["Purpose"] || "General Donation"
             };
         }).filter(r => {
             if (!r.donorName && !r.amount) return false;
@@ -221,7 +242,7 @@ export default function App() {
             }
             return true;
         });
-        
+
         if (parsed.length > 0) {
             setPendingReceipts(parsed);
             setCurrentReviewIndex(0);
@@ -249,29 +270,29 @@ export default function App() {
         if (pendingReceipts.length === 0) return;
         const remainingCount = pendingReceipts.length - currentReviewIndex;
         if (!window.confirm(`Are you sure you want to upload all remaining ${remainingCount} receipts to the cloud automatically? (This will not download PDFs to your computer to prevent browser flooding).`)) return;
-        
+
         setIsUploading(true);
         try {
             let nextNo = formData.receiptNo; // Start with current number
-            
+
             for (let i = currentReviewIndex; i < pendingReceipts.length; i++) {
                 const receipt = pendingReceipts[i];
                 setCurrentReviewIndex(i);
-                
+
                 // Update form state for the current item
                 loadReviewReceipt(receipt, nextNo);
-                
+
                 // Wait for React to render the DOM
                 await new Promise(resolve => setTimeout(resolve, 350));
-                
+
                 // Generate PDF Blob
                 const blob = await generatePdfBlob();
                 if (!blob) {
                     throw new Error(`Failed to generate PDF for ${receipt.donorName}`);
                 }
-                
+
                 const fileName = `Receipt_${nextNo.replace(/[^a-zA-Z0-9]/g, "_")}.pdf`;
-                
+
                 // Upload to R2 via local proxy (no local download here to avoid flooding)
                 const response = await fetch(`${PROXY_URL}/upload?fileName=${fileName}`, {
                     method: 'PUT',
@@ -285,19 +306,19 @@ export default function App() {
                             phonenumber: receipt.phoneNumber,
                             amount: receipt.amount,
                             paymentmode: ["NEFT", "Cheque", "Cash", "UPI", "DD"].includes(receipt.paymentMode) ? receipt.paymentMode : "NEFT",
-                            purpose: ["General Contribution", "Specific Project"].includes(receipt.purpose) ? receipt.purpose : "General Contribution",
+                            purpose: ["General Donation", "Specific Project", "Personal Donation"].includes(receipt.purpose) ? receipt.purpose : "General Donation",
                             specificpurpose: "",
                             date: receipt.date,
                             branch: selectedBranch
                         })
                     }
                 });
-                
+
                 if (!response.ok) {
                     const err = await response.json();
                     throw new Error(err.error || `Upload failed for ${receipt.donorName}`);
                 }
-                
+
                 // Generate next receipt number for next iteration
                 if (i < pendingReceipts.length - 1) {
                     nextNo = getNextReceiptNo();
@@ -306,7 +327,7 @@ export default function App() {
                     getNextReceiptNo();
                 }
             }
-            
+
             confetti({
                 particleCount: 200,
                 spread: 120,
@@ -347,14 +368,14 @@ export default function App() {
     const handleBulkDelete = async () => {
         if (!isAdmin) return;
         if (selectedRecordKeys.size === 0) return;
-        
+
         if (!window.confirm(`Are you sure you want to delete the ${selectedRecordKeys.size} selected receipts? This will permanently delete them from both the database and cloud storage.`)) return;
-        
+
         setIsFetching(true);
         try {
             const keysArray = Array.from(selectedRecordKeys);
             let successCount = 0;
-            
+
             for (const key of keysArray) {
                 try {
                     const res = await fetch(`${PROXY_URL}/delete?file=${key}`, { method: 'DELETE' });
@@ -366,7 +387,7 @@ export default function App() {
                     console.error(`Failed to delete ${key}`, err);
                 }
             }
-            
+
             alert(`Successfully deleted ${successCount} of ${keysArray.length} receipts.`);
             setSelectedRecordKeys(new Set());
             fetchR2History();
@@ -465,7 +486,7 @@ export default function App() {
                     timestamp: f.metadata?.timestamp ? new Date(f.metadata.timestamp).toLocaleString() : "---",
                     branch: f.metadata?.branch || "Unassigned"
                 }));
-                
+
                 // FILTER BY BRANCH
                 const filtered = mapped.filter(r => r.branch === selectedBranch);
                 setRecords(filtered);
@@ -601,21 +622,21 @@ export default function App() {
                     origin: { y: 0.6 },
                     colors: ['#1e3a8a', '#3b82f6', '#ffffff']
                 });
-                
+
                 if (view === "bulk_review") {
                     const updatedPending = [...pendingReceipts];
                     updatedPending.splice(currentReviewIndex, 1);
-                    
+
                     if (updatedPending.length > 0) {
                         setPendingReceipts(updatedPending);
-                        
+
                         // Adjust index if we were at the last element
                         let nextIndex = currentReviewIndex;
                         if (nextIndex >= updatedPending.length) {
                             nextIndex = updatedPending.length - 1;
                         }
                         setCurrentReviewIndex(nextIndex);
-                        
+
                         const nextReceiptNo = getNextReceiptNo();
                         loadReviewReceipt(updatedPending[nextIndex], nextReceiptNo);
                     } else {
@@ -663,7 +684,7 @@ export default function App() {
                     amount: meta.amount || "",
                     amountWords: "",
                     paymentMode: meta.paymentmode || "NEFT",
-                    purpose: meta.purpose || "General Contribution",
+                    purpose: meta.purpose || "General Donation",
                     specificPurpose: meta.specificpurpose || ""
                 });
                 setIsEditing(true);
@@ -700,8 +721,8 @@ export default function App() {
         }
     };
 
-    const filteredRecords = records.filter(r => 
-        r.receiptNo.toLowerCase().includes(searchQuery.toLowerCase()) || 
+    const filteredRecords = records.filter(r =>
+        r.receiptNo.toLowerCase().includes(searchQuery.toLowerCase()) ||
         r.donorName?.toLowerCase().includes(searchQuery.toLowerCase()) ||
         r.panNumber?.toLowerCase().includes(searchQuery.toLowerCase()) ||
         r.city?.toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -737,9 +758,9 @@ export default function App() {
                         </div>
                     </div>
                 </div>
-                
+
                 <nav className="flex bg-gray-100 p-1 rounded-xl">
-                    <button 
+                    <button
                         onClick={() => {
                             setView("form");
                             // Fix #10: reset editing state when navigating to Create tab manually
@@ -753,14 +774,14 @@ export default function App() {
                         <PlusCircle size={16} />
                         Create
                     </button>
-                    <button 
+                    <button
                         onClick={() => setView("history")}
                         className={`px-6 py-2 rounded-lg font-bold transition-all flex items-center gap-2 ${view === "history" ? "bg-white text-blue-900 shadow-sm" : "text-gray-500 hover:text-gray-700"}`}
                     >
                         <History size={16} />
                         History ({records.length})
                     </button>
-                    <button 
+                    <button
                         onClick={() => {
                             if (pendingReceipts.length > 0) {
                                 setView("bulk_review");
@@ -789,7 +810,7 @@ export default function App() {
                             </div>
                         )}
                     </div>
-                    <button 
+                    <button
                         onClick={handleLogout}
                         className="text-gray-400 hover:text-red-600 transition-colors p-2 hover:bg-red-50 rounded-lg group"
                         title="Logout"
@@ -823,13 +844,13 @@ export default function App() {
                                             <p className="text-xs text-blue-700 font-semibold">Receipt {currentReviewIndex + 1} of {pendingReceipts.length}</p>
                                         </div>
                                         <div className="flex gap-2">
-                                            <button 
+                                            <button
                                                 onClick={() => {
                                                     if (window.confirm("Are you sure you want to discard this receipt from the bulk queue?")) {
                                                         const updatedPending = [...pendingReceipts];
                                                         updatedPending.splice(currentReviewIndex, 1);
                                                         setPendingReceipts(updatedPending);
-                                                        
+
                                                         if (updatedPending.length === 0) {
                                                             alert("Bulk queue is now empty!");
                                                             setView("form");
@@ -849,7 +870,7 @@ export default function App() {
                                             >
                                                 Discard
                                             </button>
-                                            <button 
+                                            <button
                                                 onClick={() => {
                                                     if (window.confirm("Are you sure you want to exit bulk review? Your progress will be reset.")) {
                                                         setPendingReceipts([]);
@@ -863,7 +884,7 @@ export default function App() {
                                         </div>
                                     </div>
                                     <div className="flex gap-2 w-full">
-                                        <button 
+                                        <button
                                             onClick={() => {
                                                 if (currentReviewIndex > 0) {
                                                     const prev = currentReviewIndex - 1;
@@ -876,7 +897,7 @@ export default function App() {
                                         >
                                             <ChevronLeft size={14} /> Prev
                                         </button>
-                                        <button 
+                                        <button
                                             onClick={() => {
                                                 if (currentReviewIndex < pendingReceipts.length - 1) {
                                                     const next = currentReviewIndex + 1;
@@ -912,7 +933,7 @@ export default function App() {
                                         <p className="text-gray-500 font-medium mt-2">Managing records for <span className="text-blue-600 font-bold">{selectedBranch}</span></p>
                                     </div>
                                     {isEditing && (
-                                        <button 
+                                        <button
                                             onClick={() => {
                                                 setIsEditing(false);
                                                 setFormData(prev => ({ ...prev, receiptNo: getInitialReceiptNo(selectedBranch) }));
@@ -942,7 +963,7 @@ export default function App() {
                                                 <span className="text-[10px] font-bold text-gray-500 bg-gray-50 border border-gray-200 px-2 py-0.5 rounded-full uppercase tracking-wide">Locked</span>
                                             )}
                                         </div>
-                                        <input 
+                                        <input
                                             type="text" name="receiptNo" value={formData.receiptNo} onChange={handleChange}
                                             placeholder={`e.g., ${BRANCH_PREFIXES[selectedBranch] || "USES/"}028`}
                                             disabled={isEditing || !isAdmin}
@@ -951,7 +972,7 @@ export default function App() {
                                     </div>
                                     <div className="flex-1">
                                         <label className="block text-sm font-bold text-gray-700 mb-2">Date</label>
-                                        <input 
+                                        <input
                                             type="date" name="date" value={formData.date} onChange={handleChange}
                                             className="w-full border border-gray-300 bg-gray-50 rounded-lg px-4 py-3 outline-none focus:ring-2 focus:ring-blue-600 transition font-medium"
                                         />
@@ -960,7 +981,7 @@ export default function App() {
 
                                 <div>
                                     <label className="block text-sm font-bold text-gray-700 mb-2">Donor Full Name <span className="text-red-500">*</span></label>
-                                    <input 
+                                    <input
                                         type="text" name="donorName" value={formData.donorName} onChange={handleChange}
                                         className="w-full border border-gray-300 bg-gray-50 rounded-lg px-4 py-3 uppercase outline-none focus:ring-2 focus:ring-blue-600 transition font-semibold"
                                     />
@@ -969,7 +990,7 @@ export default function App() {
                                 <div className="flex gap-4">
                                     <div className="flex-1">
                                         <label className="block text-sm font-bold text-gray-700 mb-2">City</label>
-                                        <input 
+                                        <input
                                             type="text" name="city" value={formData.city} onChange={handleChange}
                                             placeholder="e.g. Mumbai"
                                             className="w-full border border-gray-300 bg-gray-50 rounded-lg px-4 py-3 outline-none focus:ring-2 focus:ring-blue-600 transition font-medium"
@@ -977,7 +998,7 @@ export default function App() {
                                     </div>
                                     <div className="flex-1">
                                         <label className="block text-sm font-bold text-gray-700 mb-2">Phone Number</label>
-                                        <input 
+                                        <input
                                             type="text" name="phoneNumber" value={formData.phoneNumber} onChange={handleChange}
                                             placeholder="e.g. 9876543210"
                                             className="w-full border border-gray-300 bg-gray-50 rounded-lg px-4 py-3 outline-none focus:ring-2 focus:ring-blue-600 transition font-medium"
@@ -988,14 +1009,14 @@ export default function App() {
                                 <div className="flex gap-4">
                                     <div className="flex-1">
                                         <label className="block text-sm font-bold text-gray-700 mb-2">Amount (₹) <span className="text-red-500">*</span></label>
-                                        <input 
+                                        <input
                                             type="number" name="amount" value={formData.amount} onChange={handleChange}
                                             className="w-full border border-gray-300 bg-gray-50 rounded-lg px-4 py-3 font-bold text-lg text-gray-900 outline-none focus:ring-2 focus:ring-blue-600 transition"
                                         />
                                     </div>
                                     <div className="flex-1">
                                         <label className="block text-sm font-bold text-gray-700 mb-2">Donor PAN Number</label>
-                                        <input 
+                                        <input
                                             type="text" name="panNumber" value={formData.panNumber} onChange={handleChange}
                                             maxLength={10}
                                             className="w-full border border-gray-300 bg-gray-50 rounded-lg px-4 py-3 uppercase outline-none focus:ring-2 focus:ring-blue-600 transition font-semibold"
@@ -1005,7 +1026,7 @@ export default function App() {
 
                                 <div>
                                     <label className="block text-sm font-bold text-gray-700 mb-2">Amount in Words</label>
-                                    <textarea 
+                                    <textarea
                                         name="amountWords" value={formData.amountWords} onChange={handleChange}
                                         rows={2}
                                         className="w-full border border-gray-300 bg-gray-50 rounded-lg px-4 py-3 font-medium text-gray-700 outline-none focus:ring-2 focus:ring-blue-600 transition"
@@ -1015,7 +1036,7 @@ export default function App() {
                                 <div className="flex gap-4">
                                     <div className="flex-1">
                                         <label className="block text-sm font-bold text-gray-700 mb-2">Payment Mode</label>
-                                        <select 
+                                        <select
                                             name="paymentMode" value={formData.paymentMode} onChange={handleChange}
                                             className="w-full border border-gray-300 bg-gray-50 rounded-lg px-4 py-3 outline-none focus:ring-2 focus:ring-blue-600 transition font-medium"
                                         >
@@ -1028,11 +1049,12 @@ export default function App() {
                                     </div>
                                     <div className="flex-1">
                                         <label className="block text-sm font-bold text-gray-700 mb-2">Purpose</label>
-                                        <select 
+                                        <select
                                             name="purpose" value={formData.purpose} onChange={handleChange}
                                             className="w-full border border-gray-300 bg-gray-50 rounded-lg px-4 py-3 outline-none focus:ring-2 focus:ring-blue-600 transition font-medium"
                                         >
-                                            <option value="General Contribution">General Contribution</option>
+                                            <option value="General Donation">General Donation</option>
+                                            <option value="Personal Donation">Personal Donation</option>
                                             <option value="Specific Project">Specific Project</option>
                                         </select>
                                     </div>
@@ -1041,7 +1063,7 @@ export default function App() {
                                 {formData.purpose === "Specific Project" && (
                                     <div className="animate-fade-in-down">
                                         <label className="block text-sm font-bold text-gray-700 mb-2">Specific Project</label>
-                                        <input 
+                                        <input
                                             type="text" name="specificPurpose" value={formData.specificPurpose} onChange={handleChange}
                                             className="w-full border border-gray-300 bg-gray-50 rounded-lg px-4 py-3 outline-none focus:ring-2 focus:ring-blue-600 transition"
                                         />
@@ -1050,14 +1072,14 @@ export default function App() {
                             </div>
 
                             <div className="mt-10 flex flex-col sm:flex-row gap-4 pt-6 border-t border-gray-200">
-                                <button 
+                                <button
                                     onClick={handlePrint}
                                     disabled={!isValid}
                                     className={`flex-1 flex justify-center items-center gap-2 py-4 px-4 rounded-xl font-bold text-blue-900 border-2 transition-all ${isValid ? 'border-blue-800 hover:bg-blue-50 bg-white active:scale-95' : 'border-gray-300 text-gray-400 bg-gray-50 cursor-not-allowed'}`}
                                 >
                                     <Printer size={20} /> Print
                                 </button>
-                                <button 
+                                <button
                                     onClick={() => setShowConfirm(true)}
                                     disabled={!isValid || isUploading}
                                     className={`flex-1 flex justify-center items-center gap-2 py-4 px-4 rounded-xl font-bold text-white transition-all shadow-md ${isValid ? 'bg-blue-800 hover:bg-blue-900 active:scale-95' : 'bg-gray-300 cursor-not-allowed shadow-none'}`}
@@ -1071,7 +1093,7 @@ export default function App() {
                         {/* RECEIPT PREVIEW PANEL */}
                         <div className="w-full xl:w-2/3 flex justify-center items-start overflow-auto pb-20">
                             <div id="receipt-print-area" className="bg-white w-[950px] min-w-[950px] print:shadow-none text-black p-12 relative font-sans" style={{ background: '#ffffff', color: '#000000' }}>
-                                
+
                                 {/* Header: Logo, Address, Donation Receipt Box */}
                                 <div className="flex justify-between items-start mb-4">
                                     {/* Logo */}
@@ -1083,7 +1105,7 @@ export default function App() {
                                     <div className="flex-1 text-center px-4">
                                         <h1 className="text-[34px] font-bold leading-tight font-sans" style={{ color: '#11057B' }}>USES Foundation</h1>
                                         <p className="text-[19px] font-bold mb-2 font-serif" style={{ color: '#11057B' }}>Universal Sadhana for Eternal Seva</p>
-                                        
+
                                         {selectedBranch === "Ajmer" ? (
                                             <>
                                                 <p className="text-[15px]" style={{ color: '#11057B' }}>G Block - 15, Near Vardhaman Dairy, Vaishali Nagar, Ajmer - 305001</p>
@@ -1125,7 +1147,7 @@ export default function App() {
 
                                 {/* Body Text */}
                                 <div className="text-[19px] leading-[2.5] text-justify font-normal mb-12" style={{ color: '#11057B' }}>
-                                    Received with thanks from <span className="font-semibold px-2 uppercase underline decoration-dotted decoration-2 underline-offset-[6px]" style={{ color: '#1e40af' }}>{formData.donorName ? `${formData.donorName}${formData.panNumber ? ', PAN: ' + formData.panNumber : ''}` : "ABHAY KUMAR MISHRA, PAN: ALJPM4419M"}</span> the sum of INR <span className="font-semibold px-2 capitalize underline decoration-dotted decoration-2 underline-offset-[6px]" style={{ color: '#1e40af' }}>{formData.amountWords ? `${formData.amountWords}` : "Thirteen thousand Only"}</span> by <span className="font-semibold px-2 uppercase underline decoration-dotted decoration-2 underline-offset-[6px]" style={{ color: '#1e40af' }}>{formData.paymentMode || "NEFT"}</span> for the <span className="font-semibold px-2 capitalize underline decoration-dotted decoration-2 underline-offset-[6px]" style={{ color: '#1e40af' }}>{formData.purpose === "Specific Project" ? formData.specificPurpose || "General Contribution" : formData.purpose}</span>.
+                                    Received with thanks from <span className="font-semibold px-2 uppercase underline decoration-dotted decoration-2 underline-offset-[6px]" style={{ color: '#1e40af' }}>{formData.donorName ? `${formData.donorName}${formData.panNumber ? ', PAN: ' + formData.panNumber : ''}` : "ABHAY KUMAR MISHRA, PAN: ALJPM4419M"}</span> the sum of INR <span className="font-semibold px-2 capitalize underline decoration-dotted decoration-2 underline-offset-[6px]" style={{ color: '#1e40af' }}>{formData.amountWords ? `${formData.amountWords}` : "Thirteen thousand Only"}</span> by <span className="font-semibold px-2 uppercase underline decoration-dotted decoration-2 underline-offset-[6px]" style={{ color: '#1e40af' }}>{formData.paymentMode || "NEFT"}</span> for the <span className="font-semibold px-2 capitalize underline decoration-dotted decoration-2 underline-offset-[6px]" style={{ color: '#1e40af' }}>{formData.purpose === "Specific Project" ? formData.specificPurpose || "General Donation" : formData.purpose}</span>.
                                 </div>
 
                                 {/* Amount Box and Signatures Row */}
@@ -1153,8 +1175,8 @@ export default function App() {
                                 {/* Note and Sanskrit */}
                                 <div className=" -mt-16 w-3/5" style={{ color: '#11057B' }}>
                                     <p className="text-[12.5px] text-justify leading-snug">
-                                        Note: Contribution to USES Foundation is eligible for deduction from <br/>
-                                        Taxable Income under the provisions of Section 80G of Income Tax Act, <br/>
+                                        Note: Donation to USES Foundation is eligible for deduction from <br />
+                                        Taxable Income under the provisions of Section 80G of Income Tax Act, <br />
                                         1961. Certificate number: AADCU0252E24MB02 dated 27-11-2024
                                     </p>
                                     <p className="mt-4 text-[22px] font-medium tracking-wider" style={{ color: '#2563eb' }}>
@@ -1174,7 +1196,7 @@ export default function App() {
                                     </div>
                                     <div className="p-6 space-y-4">
                                         <p className="text-gray-600 text-sm">Please verify the details below before saving and uploading.</p>
-                                        
+
                                         <div className="bg-gray-50 p-4 rounded-lg space-y-2 border border-gray-100">
                                             <div className="flex justify-between">
                                                 <span className="text-gray-500 font-medium text-sm">Receipt No:</span>
@@ -1218,35 +1240,35 @@ export default function App() {
                                 <FileSpreadsheet className="text-blue-600" size={32} /> Bulk Import Receipts
                             </h2>
                             <p className="text-gray-500 mb-8">Upload a CSV file to automatically generate a queue of receipts. You can review them one by one, edit if needed, and confirm before saving.</p>
-                            
+
                             <div className="flex flex-col gap-6">
                                 <div className="border-2 border-dashed border-gray-300 rounded-xl p-12 text-center hover:border-blue-500 transition-colors bg-gray-50 relative group">
                                     <Upload size={48} className="mx-auto text-blue-400 mb-4 group-hover:scale-110 transition-transform" />
                                     <p className="text-lg font-bold text-gray-700 mb-2">Upload CSV File</p>
                                     <p className="text-sm text-gray-500 mb-6">Click the button below to select your CSV file.</p>
-                                    <input 
-                                        type="file" 
-                                        accept=".csv" 
+                                    <input
+                                        type="file"
+                                        accept=".csv"
                                         onChange={handleCSVUpload}
-                                        className="hidden" 
+                                        className="hidden"
                                         id="csv-upload"
                                     />
                                     <label htmlFor="csv-upload" className="bg-blue-800 hover:bg-blue-900 text-white px-6 py-3 rounded-lg font-bold cursor-pointer transition-colors inline-flex items-center gap-2 shadow-md hover:shadow-lg active:scale-95 transition-all">
                                         <Upload size={18} /> Select File
                                     </label>
                                 </div>
-                                
+
                                 <div className="bg-blue-50 p-6 rounded-xl border border-blue-100">
                                     <h3 className="font-bold text-blue-900 mb-2">CSV Column Configuration</h3>
                                     <p className="text-sm text-blue-800 mb-4">Ensure your CSV contains the following column headers exactly:</p>
                                     <div className="flex flex-wrap gap-2 mb-6">
-                                        {["Date", "Name", "Pan card", "Phone no", "Payment mode", "City", "Amt"].map(h => (
+                                        {["Date", "Name", "Donation", "Pan card", "Phone no", "Payment mode", "City", "Amt"].map(h => (
                                             <span key={h} className="bg-white px-3 py-1.5 rounded-md text-xs font-bold text-blue-900 border border-blue-200 shadow-sm">{h}</span>
                                         ))}
                                     </div>
-                                    <button 
+                                    <button
                                         onClick={() => {
-                                            const csvData = "Sr no,Date,Name,Pan card,Phone no,Payment mode,City,Amt\n1,01-Apr-26,Nishant Kumar Jaiswal,AGBPJ4914D,93046 22622,Online,Mumbai,1000.00\n2,12-Apr-26,Bhagwati Pathak,BAWPP4118H,94213 40799,Online,Mumbai,2000.00";
+                                            const csvData = "Sr no,Date,Name,Donation,Pan card,Phone no,Payment mode,City,Amt\n1,01-04-2026,Nishant Kumar Jaiswal,General Donation,AGBPJ4914D,93046 22622,Online,Mumbai,1000.00\n2,12-04-2026,Bhagwati Pathak,Personal Donation,BAWPP4118H,94213 40799,Online,Mumbai,2000.00";
                                             const blob = new Blob([csvData], { type: 'text/csv;charset=utf-8;' });
                                             const url = window.URL.createObjectURL(blob);
                                             const a = document.createElement('a');
@@ -1281,9 +1303,9 @@ export default function App() {
                                     )}
                                     <div className="relative">
                                         <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={16} />
-                                        <input 
-                                            type="text" 
-                                            placeholder="Search receipts..." 
+                                        <input
+                                            type="text"
+                                            placeholder="Search receipts..."
                                             value={searchQuery}
                                             onChange={(e) => setSearchQuery(e.target.value)}
                                             className="pl-10 pr-4 py-2 border border-gray-200 rounded-lg outline-none focus:ring-2 focus:ring-blue-600 transition"
@@ -1294,14 +1316,14 @@ export default function App() {
                                     </span>
                                 </div>
                             </div>
-                            
+
                             <div className="overflow-x-auto">
                                 <table className="w-full text-left">
                                     <thead className="bg-gray-50 border-b border-gray-100">
                                         <tr>
                                             {isAdmin && (
                                                 <th className="px-6 py-4 w-12 text-left">
-                                                    <input 
+                                                    <input
                                                         type="checkbox"
                                                         checked={filteredRecords.length > 0 && selectedRecordKeys.size === filteredRecords.length}
                                                         onChange={toggleSelectAll}
@@ -1345,7 +1367,7 @@ export default function App() {
                                                 <tr key={record.id} className={`hover:bg-gray-50 transition-colors group ${selectedRecordKeys.has(record.id) ? 'bg-blue-50/40 hover:bg-blue-50/60' : ''}`}>
                                                     {isAdmin && (
                                                         <td className="px-6 py-4">
-                                                            <input 
+                                                            <input
                                                                 type="checkbox"
                                                                 checked={selectedRecordKeys.has(record.id)}
                                                                 onChange={() => toggleSelectRecord(record.id)}
@@ -1377,14 +1399,14 @@ export default function App() {
                                                     </td>
                                                     <td className="px-6 py-4 text-right">
                                                         <div className="flex items-center justify-end gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                                                            <button 
+                                                            <button
                                                                 onClick={() => handleViewFile(record.id)}
                                                                 className="p-2 text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
                                                                 title="View Receipt"
                                                             >
                                                                 <Eye size={16} />
                                                             </button>
-                                                            <button 
+                                                            <button
                                                                 onClick={() => handleEditReceipt(record.id)}
                                                                 className="p-2 text-amber-600 hover:bg-amber-50 rounded-lg transition-colors"
                                                                 title="Edit Metadata"
@@ -1393,7 +1415,7 @@ export default function App() {
                                                                 {isLoadingMetadata === record.id ? <Loader2 size={16} className="animate-spin" /> : <Edit size={16} />}
                                                             </button>
                                                             {isAdmin && (
-                                                                <button 
+                                                                <button
                                                                     onClick={() => handleDeleteReceipt(record.id, record.receiptNo)}
                                                                     className="p-2 text-red-600 hover:bg-red-50 rounded-lg transition-colors"
                                                                     title="Delete Receipt"

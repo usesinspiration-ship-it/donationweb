@@ -71,7 +71,7 @@ export default function App() {
         amount: "13000",
         amountWords: "",
         paymentMode: "NEFT",
-        purpose: "General Contribution",
+        purpose: "General Donation",
         specificPurpose: ""
     });
 
